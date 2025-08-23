@@ -1,28 +1,40 @@
-use std::{
-    env::var,
-    sync::mpsc,
-    path::Path,
-};
-use notify::{
-    recommended_watcher,
-    Watcher,
-    RecursiveMode,
-};
+mod client;
+mod server;
 
-const ZATHURA_PATH_POSTFIX: &str =  
-    ".local/share/zathura";
+use std::env::{args, Args};
+use crate::{
+    client::client_main,
+    server::server_main,
+};
 
 fn main() {
-    let path_str = format!(
-        "{}/{}",
-        var("HOME").unwrap(),
-        ZATHURA_PATH_POSTFIX,
-    );
-    let path = Path::new(&path_str);
+    let model = Model::new(args());
+    match model {
+        Model::Client => client_main(),
+        Model::Server => server_main(),
+    }
+}
 
-    let (tx, rx) = mpsc::channel();
-    let mut watcher = recommended_watcher(tx).unwrap();
+enum Model {
+    Client,
+    Server,
+}
 
-    watcher.watch(&path, RecursiveMode::Recursive).unwrap();
+impl Model {
+    fn new(args: Args) -> Self {
+        const ARG_ERR: &str = 
+            "Error: incorrect number of args given please \
+            pass in --server or --client to indicate behavior";
 
+        if args.len() != 2 { panic!("{}", ARG_ERR) }
+        if let Some(model) = args.skip(1).next() {
+            match model.as_str() {
+                "--server" => return Self::Server,
+                "--client" => return Self::Client,
+                _ => panic!("{}", ARG_ERR),
+            }
+        } else {
+            panic!("{}", ARG_ERR);
+        }
+    }
 }
