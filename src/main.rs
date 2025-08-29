@@ -12,12 +12,16 @@ use crate::{
 
 type DRes<T> = Result<T, Box<dyn Error>>;
 
+const FILE1_NAME: &str = "bookmarks";
+const FILE2_NAME: &str = "history";
+const FILE3_NAME: &str = "input-history";
+
 fn main() {
     let model = Model::new(args());
     match model {
         Model::Client => client_main(),
         Model::Server => server_main(),
-    }
+    };
 }
 
 enum Model {
