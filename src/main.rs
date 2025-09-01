@@ -1,3 +1,5 @@
+mod shared_consts;
+mod qrexec;
 mod client;
 mod server;
 
@@ -12,9 +14,6 @@ use crate::{
 
 type DRes<T> = Result<T, Box<dyn Error>>;
 
-const FILE1_NAME: &str = "bookmarks";
-const FILE2_NAME: &str = "history";
-const FILE3_NAME: &str = "input-history";
 
 fn main() {
     let model = Model::new(args());
