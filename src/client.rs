@@ -11,13 +11,8 @@ use notify::{
     EventKind,
 };
 use anyhow::anyhow;
-use crate::{
-    DRes,
-    qrexec::Qrexec,
-    shared_consts::*,
-};
-
-const KIB64: usize = 65536;
+use crate::shared_consts::*;
+use qrexec_binds::Qrexec;
 
 pub fn client_main() -> DRes<()> {
     const RPC_SERVICE_NAME: &str = "qubes.ZathuraMgmt";
@@ -30,8 +25,7 @@ pub fn client_main() -> DRes<()> {
     let path_str = format!(
         "{}/{}",
         var("HOME").or(Err(anyhow!(HOME_VAR_ERR)))?,
-        ZATHURA_PATH_POSTFIX,
-    );
+        ZATHURA_PATH_POSTFIX);
     let path = Path::new(&path_str);
 
     let vm_name = var(ZATHURA_BMARK_VM_VAR)
@@ -66,31 +60,25 @@ fn restore_zathura_fs(
     qrx: &mut Qrexec,
     zstate_dir: &str,
 ) -> DRes<()> {
+    const NUM_FILES: usize = 
+        [BMARKS_FNAME, INPUT_HISTORY_FNAME, HISTORY_FNAME].len();
+
     let mut buf = [0u8; KIB64];
+    let recv_seq_buf = [RECV_SEQ; 1];
 
-    let nb = Qrexec::read(&mut qrx.stdout, &mut buf)?;
-    let file1 = str::from_utf8(&buf[..nb])?; 
-    fs::write(
-        format!("{}/{}", zstate_dir, ),
-        file1)?;
+    for _ in 0..NUM_FILES {
+        let _ = Qrexec::read(&mut qrx.stdout, &mut buf)?; 
+        let _ = Qrexec::write(&mut qrx.stdin, &recv_seq_buf)?;
 
-    buf[0] = 1; 
-    Qrexec::write(&mut qrx.stdin, &mut buf[0..1])?; 
+        let read_cont = str::from_utf8(&buf)?;
+        let (fname, fcont) = read_cont.split_at(
+            read_cont.find(';').ok_or(
+                anyhow!(NAME_DELIM_ERR))?);
 
-    let nb = Qrexec::read(&mut qrx.stdout, &mut buf)?; 
-    let file2 = str::from_utf8(&buf[..nb])?;
-    fs::write(
-        format!("{}/{}", zstate_dir, FILE2_NAME), 
-        file2)?;
-
-    buf[0] = 1; 
-    Qrexec::write(&mut qrx.stdin, &mut buf[0..1])?; 
-
-    let nb = Qrexec::read(&mut qrx.stdout, &mut buf)?;
-    let file3 = str::from_utf8(&buf[..nb])?; 
-    fs::write(
-        format!("{}/{}", zstate_dir, FILE3_NAME),
-        file3)?;
+        fs::write(
+            format!("{}/{}", zstate_dir, fname),
+            fcont)?;
+    }
 
     return Ok(());
 }

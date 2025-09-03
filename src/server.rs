@@ -1,13 +1,13 @@
 use crate::{
-    DRes,
-    qrexec::Qrexec,
     shared_consts::*,
+    parser::parse_buf,
 };
 use std::{
     env::var,
     io::{self, Stdin, Stdout},
     fs,
 };
+use qrexec_binds::{Qrexec, errors::*};
 use anyhow::anyhow;
 
 pub fn server_main() -> DRes<()> {
@@ -18,7 +18,16 @@ pub fn server_main() -> DRes<()> {
     let dpath = init_dir()?;
     restore_zathura_fs(&mut stdin, &mut stdout, &dpath)?;
 
-    return Ok(());
+    let mut buf = [0u8; KIB64];
+    let recv_seq_buf = &[1u8];
+    loop {
+        let nb = Qrexec::read(&mut stdin, &mut buf)?;
+        let _ = Qrexec::write(&mut stdout, recv_seq_buf)?;
+        let (fname, fcont) = parse_buf(&buf[..nb])?;
+        fs::write(
+            &format!("{dpath}/{fname}"), 
+            fcont)?;
+    }
 }
 
 fn restore_zathura_fs(
@@ -31,10 +40,9 @@ fn restore_zathura_fs(
         fname: &str,
         stdout: &mut Stdout,
         stdin: &mut Stdin,
-    | {
-        let mut recv_seq_buf = [0u8; 1];
+        recv_seq_buf: &mut [u8; 1],
+    | -> QRXRes<()> {
         let path = format!("{}/{}", dir_path, fname);
-
         if fs::exists(&path)? {
             let fcont = fs::read_to_string(&path)?;
             let written = format!(
@@ -48,18 +56,20 @@ fn restore_zathura_fs(
                 panic!("{}", WBYTES_NE_LEN_ERR);
             }
 
-            let _ = Qrexec::read(stdin, &mut recv_seq_buf)?;
+            let _ = Qrexec::read(stdin, recv_seq_buf)?;
             assert!(
-                recv_seq_buf[0] == RECV_SEQ,
+                recv_seq_buf[0] == RECV_SEQ, 
                 "{}", RECV_SEQ_ERR);
+            recv_seq_buf[0] = 0;
         }
 
-        return Ok::<(), io::Error>(());
+        return Ok(());
     };
 
-    fhandler(dir_path, BMARKS_FNAME, stdout, stdin)?;
-    fhandler(dir_path, HISTORY_FNAME, stdout, stdin)?;
-    fhandler(dir_path, INPUT_HISTORY_FNAME, stdout, stdin)?;
+    let mut recv_seq_buf: [u8; 1] = [0];
+    fhandler(dir_path, BMARKS_FNAME, stdout, stdin, &mut recv_seq_buf)?;
+    fhandler(dir_path, HISTORY_FNAME, stdout, stdin, &mut recv_seq_buf)?;
+    fhandler(dir_path, INPUT_HISTORY_FNAME, stdout, stdin, &mut recv_seq_buf)?;
 
     return Ok(());
 }

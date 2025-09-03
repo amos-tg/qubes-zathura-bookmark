@@ -1,19 +1,13 @@
+mod parser;
 mod shared_consts;
-mod qrexec;
 mod client;
 mod server;
 
-use std::{
-    env::{args, Args},
-    error::Error,
-};
+use std::env::{args, Args};
 use crate::{
     client::client_main,
     server::server_main,
 };
-
-type DRes<T> = Result<T, Box<dyn Error>>;
-
 
 fn main() {
     let model = Model::new(args());

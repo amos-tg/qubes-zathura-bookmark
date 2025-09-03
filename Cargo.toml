@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.99"
 notify = "8.2.0"
+qrexec-binds = { path = "../qrexec-binds" } 

@@ -118,11 +118,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e0826a989adedc2a244799e823aece04662b66609d96af8dff7ac6df9a8925d"
 
 [[package]]
+name = "qrexec-binds"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+]
+
+[[package]]
 name = "qubes-zathura-bookmark"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "notify",
+ "qrexec-binds",
 ]
 
 [[package]]
