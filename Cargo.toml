@@ -7,3 +7,4 @@ edition = "2024"
 anyhow = "1.0.99"
 notify = "8.2.0"
 qrexec-binds = { path = "../qrexec-binds" } 
+dbug_to_file = { path = "../dbug_to_file" }

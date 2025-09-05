@@ -1,14 +1,16 @@
 use crate::{
     shared_consts::*,
-    parser::parse_buf,
+    shared_fn::*,
 };
 use std::{
-    env::var,
-    io::{self, Stdin, Stdout},
+    io::{
+        self,
+        Stdin,
+        Stdout,
+    },
     fs,
 };
 use qrexec_binds::{Qrexec, errors::*};
-use anyhow::anyhow;
 
 pub fn server_main() -> DRes<()> {
     let (mut stdin, mut stdout) = (
@@ -23,6 +25,7 @@ pub fn server_main() -> DRes<()> {
     loop {
         let nb = Qrexec::read(&mut stdin, &mut buf)?;
         let _ = Qrexec::write(&mut stdout, recv_seq_buf)?;
+
         let (fname, fcont) = parse_buf(&buf[..nb])?;
         fs::write(
             &format!("{dpath}/{fname}"), 
@@ -72,16 +75,4 @@ fn restore_zathura_fs(
     fhandler(dir_path, INPUT_HISTORY_FNAME, stdout, stdin, &mut recv_seq_buf)?;
 
     return Ok(());
-}
-
-fn init_dir() -> DRes<String> {
-    let path = format!(
-        "{}/{}",
-        var("HOME").or(Err(anyhow!(HOME_VAR_ERR)))?,
-        ZATHURA_PATH_POSTFIX,
-    );
-
-    fs::create_dir_all(&path)?;
-
-    return Ok(path);
 }

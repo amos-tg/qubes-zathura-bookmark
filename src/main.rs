@@ -1,4 +1,4 @@
-mod parser;
+mod shared_fn;
 mod shared_consts;
 mod client;
 mod server;
@@ -8,12 +8,22 @@ use crate::{
     client::client_main,
     server::server_main,
 };
+use dbug_to_file::err_append;
+
+const ERR_LOG_DIR_NAME: &str = "zathura-bookmark-service";
+const ERR_FNAME: &str = "errors.log";
 
 fn main() {
     let model = Model::new(args());
     match model {
-        Model::Client => client_main(),
-        Model::Server => server_main(),
+        Model::Client => err_append(
+            &client_main(),
+            ERR_FNAME,
+            ERR_LOG_DIR_NAME),
+        Model::Server => err_append(
+            &server_main(),
+            ERR_FNAME,
+            ERR_LOG_DIR_NAME),
     };
 }
 
