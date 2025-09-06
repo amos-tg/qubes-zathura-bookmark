@@ -8,7 +8,7 @@ use crate::{
     client::client_main,
     server::server_main,
 };
-use dbug_to_file::err_append;
+use dbuggery::err_append;
 
 const ERR_LOG_DIR_NAME: &str = "zathura-bookmark-service";
 const ERR_FNAME: &str = "errors.log";

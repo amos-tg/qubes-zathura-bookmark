@@ -21,8 +21,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a65b545ab31d687cff52899d4890855fec459eb6afe0da6417b8a18da87aa29"
 
 [[package]]
-name = "dbug_to_file"
-version = "0.1.0"
+name = "dbuggery"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ddae97501c6e61025aa285d58f52f8d2c7eb79fd732b8ac5b4df93cf5627e9c"
 
 [[package]]
 name = "fsevent-sys"
@@ -123,7 +125,9 @@ checksum = "5e0826a989adedc2a244799e823aece04662b66609d96af8dff7ac6df9a8925d"
 
 [[package]]
 name = "qrexec-binds"
-version = "0.1.0"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc5e877391b94bffc1e6696d20b89b71428ce932eca38fdca5bafc62b3b7e985"
 dependencies = [
  "anyhow",
 ]
@@ -133,7 +137,7 @@ name = "qubes-zathura-bookmark"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "dbug_to_file",
+ "dbuggery",
  "notify",
  "qrexec-binds",
 ]

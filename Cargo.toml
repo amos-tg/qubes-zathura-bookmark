@@ -2,9 +2,14 @@
 name = "qubes-zathura-bookmark"
 version = "0.1.0"
 edition = "2024"
+readme = "README.md"
+license-file = "LICENSE.md"
+description = "maintains state files for zathura pdf reader across virtual machines"
+homepage = "https://github.com/amos-tg/qubes-zathura-bookmark"
+repository = "https://github.com/amos-tg/qubes-zathura-bookmark"
 
 [dependencies]
 anyhow = "1.0.99"
+dbuggery = "0.0.1"
 notify = "8.2.0"
-qrexec-binds = { path = "../qrexec-binds" } 
-dbug_to_file = { path = "../dbug_to_file" }
+qrexec-binds = "0.0.1"
