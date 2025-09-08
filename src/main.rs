@@ -3,18 +3,26 @@ mod shared_consts;
 mod client;
 mod server;
 
-use std::env::{args, Args};
+use std::env::var;
 use crate::{
     client::client_main,
     server::server_main,
+    shared_consts::DRes,
 };
 use dbuggery::err_append;
+use anyhow::anyhow;
 
 const ERR_LOG_DIR_NAME: &str = "zathura-bookmark-service";
 const ERR_FNAME: &str = "errors.log";
 
 fn main() {
-    let model = Model::new(args());
+    let model = Model::new();
+    err_append(
+        &model,
+        ERR_FNAME,
+        ERR_LOG_DIR_NAME);
+    let model = model.unwrap();
+
     match model {
         Model::Client => err_append(
             &client_main(),
@@ -33,20 +41,16 @@ enum Model {
 }
 
 impl Model {
-    fn new(args: Args) -> Self {
-        const ARG_ERR: &str = 
-            "Error: incorrect number of args given please \
-            pass in --server or --client to indicate behavior";
+    fn new() -> DRes<Self> {
+        const MODEL_IDENT_VAR: &str = "ZBMARK_MODEL";
+        const INVALID_IDENT_VAR_ERR: &str = 
+            "Error: identifier var != <client> or <server>.";
 
-        if args.len() != 2 { panic!("{}", ARG_ERR) }
-        if let Some(model) = args.skip(1).next() {
-            match model.as_str() {
-                "--server" => return Self::Server,
-                "--client" => return Self::Client,
-                _ => panic!("{}", ARG_ERR),
-            }
-        } else {
-            panic!("{}", ARG_ERR);
+        let ident = var(MODEL_IDENT_VAR)?;
+        match ident.as_str() {
+            "client" => return Ok(Self::Client),
+            "server" => return Ok(Self::Server),
+            _ => Err(anyhow!(INVALID_IDENT_VAR_ERR))?,
         }
     }
 }

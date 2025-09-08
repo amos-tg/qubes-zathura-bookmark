@@ -4,7 +4,7 @@
 # qubes rpc service programs functionalities
 # Change these if personal values differ:
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
-LOCAL_SCRIPT_PATH="/home/shannel/debug_scripts/zath_bmark_vm_build.sh";
+LOCAL_SCRIPT_PATH="/home/shannel/debug_scripts/split_zathura/zath_bmark_vm_build.sh";
 QINC_SCRIPT_PATH="/QubesIncoming/dom0/zath_bmark_vm_build.sh";
 
 COMPILER_VM="dev";
@@ -32,7 +32,7 @@ WORKING_DIR="$(mktemp --directory)" || exit 1;
 qvm-run --pass-io -u $COMPILER_VM_USER $COMPILER_VM "
 cd $PROJECT_DIR &&
 zip -r $ZIP_FNAME ./* -x 'target/***' '.git/***' '.gitignore' \
-'zath_bmark_debug.sh' 'zath_bmar_vm_build.sh' &&
+'zath_bmark_debug.sh' 'zath_bmark_vm_build.sh' 'LICENSE.md' 'README.md' &&
 cat $ZIP_FNAME" > $WORKING_DIR/$ZIP_FNAME || exit 2;
 qvm-run $COMPILER_VM "rm -f $PROJECT_DIR/$ZIP_FNAME" || exit 3;
 
