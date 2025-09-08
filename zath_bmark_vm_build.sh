@@ -32,7 +32,13 @@ cargo build --manifest-path $PROJ_MANIFEST || exit 2;
 chmod 755 $AOUT || exit 4
 
 if [ $IS_VAULT == 1 ]; then 
-chown root:root $AOUT || exit 5;
-mv $AOUT $VAULT_RPC_PATH || exit 6; fi
+  chown root:root $AOUT || exit 5;
+  mv $AOUT /usr/bin/$PKG_NAME || exit 6; 
+  chmod 755 /usr/bin/$PKG_NAME || exit 7; 
+  echo \
+  "#!/bin/sh
+qubes-zathura-bookmark --server" \
+  > $VAULT_RPC_PATH || exit 8;
+fi
 
-rm -f $SELF_PATH || exit ;
+rm -f $SELF_PATH || exit 9;
