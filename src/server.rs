@@ -6,7 +6,6 @@ use std::fs;
 use qrexec_binds::{
     QrexecServer, 
     QIO,
-    errors::QRXRes,
 };
 
 pub fn server_main() -> DRes<()> {
@@ -15,18 +14,22 @@ pub fn server_main() -> DRes<()> {
 
     restore_zathura_fs(&mut qrx, &dpath)?;
 
-    let mut buf = [0u8; KIB64];
+    let mut buf = [0u8; WBUF_LEN];
     let recv_seq_buf = [1u8];
     loop {
-        let rnb = qrx.read(&mut buf[..BLEN])?;
-        let wnb = qrx.write(&recv_seq_buf)?;
-        assert!(wnb == 1);
-
-        let (fname, fcont) = parse_buf(&buf[..rnb])?;
-        fs::write(
-            &format!("{dpath}/{fname}"), 
-            fcont)?;
+        request_handler(&mut qrx)?;
     }
+}
+
+fn request_handler(
+    qrx: &mut QrexecServer,
+    rbuf: &mut [u8],
+) -> DRes<()> {
+    let nb = qrx.read(rbuf);
+    find_delim()
+    match 
+
+    return Ok(());
 }
 
 // booknames cannot have semicolons. 
@@ -36,12 +39,11 @@ pub fn server_main() -> DRes<()> {
 // format:  
 // {number of booknames};{bookname};{bookname}; ...
 fn restore_booknames(
-    qrx: &mut QrexecServer::<KIB64> 
+    qrx: &mut QrexecServer::<KIB64>,
 ) -> DRes<()> {
         
     return Ok(());
 }
-
 
 
 // read bytes format

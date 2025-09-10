@@ -67,7 +67,7 @@ fn restore_booknames(
     qrx: &mut QrexecClient::<KIB64>,
     book_dir: &str, 
 ) -> DRes<()> {
-    let mut rbuf = [0u8; KIB64];
+    let mut rbuf = [0u8; WBUF_LEN];
     let mut bnames;
     let mut bn_len;
 
@@ -77,7 +77,8 @@ fn restore_booknames(
     {
     let iref_rbuf = &rbuf[..nb];
     let buf_cont = str::from_utf8(iref_rbuf)?;
-    bnames = buf_cont.split(';').map(|x| x.to_owned())
+    bnames = buf_cont.split(';')
+        .map(|x| x.to_owned())
         .collect::<Vec<String>>();
     }
 
@@ -87,7 +88,8 @@ fn restore_booknames(
         "{}", MSG_FORMAT_ERR);
 
     let num_books = bnames[0].parse::<usize>()?;
-    while num_books != (bn_len - 1) && nb == (KIB64 - 8) {
+
+    while num_books != (bn_len - 1) && nb == WBUF_LEN {
         let old_len = bn_len;
 
         let nb = qrx.read(&mut rbuf)?;
@@ -112,11 +114,19 @@ fn restore_booknames(
     return Ok(());
 }
 
+// format: 
+//   query: book;bookname 
+//   response: num_reads;content
+//   subsequents: content ... 
 fn restore_book(
     qrx: &mut QrexecClient::<KIB64>,
     bname: &str, 
-
+    book_dir: &str,
 ) -> DRes<()> {
+    let mut buf = [0u8; WBUF_LEN];
+    let mut book = Vec::<u8>::new();
+    let mut rnb;
+
     let query = format!("book;{bname}");
     let qlen = query.len();
     assert!(
@@ -128,7 +138,23 @@ fn restore_book(
         wnb == query.len(), 
         "{}", WBYTES_NE_LEN_ERR);
 
-    let rnb = qrx.read()
+    rnb = qrx.read(&mut buf)?;
+
+    let delim_idx = find_delim(&buf[..rnb]).ok_or(
+        anyhow!(MSG_FORMAT_ERR))?;
+    let num_reads = str::from_utf8(&buf[..delim_idx])?
+        .parse::<usize>()?;
+
+    book.extend_from_slice(&buf[(delim_idx + 1)..]);
+
+    for _ in 0..num_reads {
+        rnb = qrx.read(&mut buf)?; 
+        book.extend_from_slice(&buf[..rnb]);
+    }
+
+    fs::write(
+        &format!("{book_dir}/{bname}"),
+        book)?; 
 
     return Ok(());
 }
@@ -137,7 +163,7 @@ fn restore_zathura_fs(
     qrx: &mut QrexecClient::<KIB64>,
     zstate_dir: &str,
 ) -> DRes<()> {
-    let mut buf = [0u8; KIB64];
+    let mut buf = [0u8; WBUF_LEN];
     let recv_seq_buf = [RECV_SEQ; 1];
     let (mut nb, mut rnb);
 
