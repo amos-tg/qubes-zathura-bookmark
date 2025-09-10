@@ -7,7 +7,7 @@
 # Script Arguments #
 PKG_NAME="$1";
 USER_U="$2";
-IS_VAULT="$3"; 
+IS_SERVER="$3"; 
 # ~~~~~~~~~~~~~~~~ #
 
 HOME_U="/home/$USER_U";
@@ -29,16 +29,11 @@ else
 
 unzip $ZIP_PATH -d $PROJ_DIR || true;
 cargo build --manifest-path $PROJ_MANIFEST || exit 2;
+chown root:root $AOUT || exit 5;
 chmod 755 $AOUT || exit 4
 
-if [ $IS_VAULT == 1 ]; then 
-  chown root:root $AOUT || exit 5;
-  mv $AOUT /usr/bin/$PKG_NAME || exit 6; 
-  chmod 755 /usr/bin/$PKG_NAME || exit 7; 
-  echo \
-  "#!/bin/sh
-qubes-zathura-bookmark --server" \
-  > $VAULT_RPC_PATH || exit 8;
+if [ $IS_SERVER == 1 ]; then 
+  mv $AOUT $VAULT_RPC_PATH || exit 7; 
 fi
 
 rm -f $SELF_PATH || exit 9;

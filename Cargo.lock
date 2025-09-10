@@ -125,9 +125,9 @@ checksum = "5e0826a989adedc2a244799e823aece04662b66609d96af8dff7ac6df9a8925d"
 
 [[package]]
 name = "qrexec-binds"
-version = "0.0.2"
+version = "0.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e6b76a6d59c043e07db9f2fa0d0b49ac542a9a846cbb0bfc41182dee206034f"
+checksum = "53e75c40e6379b1ec6743994d98d14768d723f2f270533ac57e84d3e3dc5e044"
 dependencies = [
  "anyhow",
 ]

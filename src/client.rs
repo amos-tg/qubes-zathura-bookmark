@@ -15,7 +15,7 @@ use crate::{
     shared_consts::*, 
     shared_fn::*,
 };
-use qrexec_binds::Qrexec;
+use qrexec_binds::{QrexecClient, QIO};
 
 pub fn client_main() -> DRes<()> {
     const RPC_SERVICE_NAME: &str = "qubes.ZathuraMgmt";
@@ -28,9 +28,12 @@ pub fn client_main() -> DRes<()> {
     let dpath = init_dir()?;
     let path = Path::new(&dpath);
 
-    let vm_name = var(ZATHURA_BMARK_VM_VAR)
-        .or(Err(anyhow!(ZATHURA_BMARK_VM_VAR_ERR)))?;
-    let mut qrx = Qrexec::new(&[&vm_name, RPC_SERVICE_NAME])?;
+    let vm_name = var(ZATHURA_BMARK_VM_VAR).or(
+        Err(anyhow!(ZATHURA_BMARK_VM_VAR_ERR)))?;
+
+    let mut qrx = QrexecClient::<KIB64>::new(
+        &vm_name, RPC_SERVICE_NAME,
+        None, None)?;
 
     restore_zathura_fs(&mut qrx, &dpath)?;
 
@@ -45,10 +48,13 @@ pub fn client_main() -> DRes<()> {
             _ => (),
         }
         for path in event.paths {
-            let fcont = fs::read_to_string(&path)?;
+            let fcont = fs::read_to_string(&path)?
+                .as_bytes()
+                .to_owned();
+            let fc_len = fcont.len();
 
-            Qrexec::write(&mut qrx.stdin, fcont.as_bytes())?;
-            Qrexec::read(&mut qrx.stdout, &mut recv_seq_buf)?;
+            qrx.write(&fcont[..fc_len])?;
+            qrx.read(&mut recv_seq_buf)?;
 
             if recv_seq_buf[0] != RECV_SEQ {
                 return Err(anyhow!(RECV_SEQ_ERR).into());
@@ -57,21 +63,94 @@ pub fn client_main() -> DRes<()> {
     } 
 }
 
+fn restore_booknames(
+    qrx: &mut QrexecClient::<KIB64>,
+    book_dir: &str, 
+) -> DRes<()> {
+    let mut rbuf = [0u8; KIB64];
+    let mut bnames;
+    let mut bn_len;
+
+    let nb = qrx.read(&mut rbuf)?;
+
+    // have to scope here or rust's borrow checker will complain
+    {
+    let iref_rbuf = &rbuf[..nb];
+    let buf_cont = str::from_utf8(iref_rbuf)?;
+    bnames = buf_cont.split(';').map(|x| x.to_owned())
+        .collect::<Vec<String>>();
+    }
+
+    bn_len = bnames.len();
+    assert!(
+        bn_len >= 1,
+        "{}", MSG_FORMAT_ERR);
+
+    let num_books = bnames[0].parse::<usize>()?;
+    while num_books != (bn_len - 1) && nb == (KIB64 - 8) {
+        let old_len = bn_len;
+
+        let nb = qrx.read(&mut rbuf)?;
+
+        let buf_cont = str::from_utf8(&rbuf[..nb])?;
+        bnames.extend(
+            buf_cont.split(';')
+                .map(|x| x.to_owned()));
+
+        bn_len = bnames.len();
+        if old_len == bn_len {
+            Err(anyhow!(BNAME_NE_SIZE_ERR))?;
+        }
+    } 
+
+    for bname in bnames {
+        fs::write(
+            &format!("{book_dir}/{bname}"),
+            "")?;
+    }
+
+    return Ok(());
+}
+
+fn restore_book(
+    qrx: &mut QrexecClient::<KIB64>,
+    bname: &str, 
+
+) -> DRes<()> {
+    let query = format!("book;{bname}");
+    let qlen = query.len();
+    assert!(
+        qlen < WBUF_LEN,
+        "{}", MSG_LEN_WBUF_ERR);
+
+    let wnb = qrx.write(query.as_bytes())?; 
+    assert!(
+        wnb == query.len(), 
+        "{}", WBYTES_NE_LEN_ERR);
+
+    let rnb = qrx.read()
+
+    return Ok(());
+}
+
 fn restore_zathura_fs(
-    qrx: &mut Qrexec,
+    qrx: &mut QrexecClient::<KIB64>,
     zstate_dir: &str,
 ) -> DRes<()> {
-    const NUM_FILES: usize = 
-        [BMARKS_FNAME, INPUT_HISTORY_FNAME, HISTORY_FNAME].len();
-
     let mut buf = [0u8; KIB64];
     let recv_seq_buf = [RECV_SEQ; 1];
+    let (mut nb, mut rnb);
 
-    for _ in 0..NUM_FILES {
-        let _ = Qrexec::read(&mut qrx.stdout, &mut buf)?; 
-        let _ = Qrexec::write(&mut qrx.stdin, &recv_seq_buf)?;
+    for _ in FILES {
+        rnb = qrx.read(&mut buf[..BLEN])?; 
+        nb = qrx.write(&recv_seq_buf)?;
+        assert!(nb == 1);
 
-        let read_cont = str::from_utf8(&buf)?;
+        if buf.starts_with(NONE) {
+            continue;
+        }   
+
+        let read_cont = str::from_utf8(&buf[..rnb])?;
         let (fname, fcont) = read_cont.split_at(
             read_cont.find(';').ok_or(
                 anyhow!(NAME_DELIM_ERR))?);
