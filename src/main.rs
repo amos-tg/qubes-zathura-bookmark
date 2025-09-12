@@ -1,3 +1,5 @@
+mod req; 
+mod conf;
 mod shared_fn;
 mod shared_consts;
 mod client;

@@ -24,13 +24,12 @@ pub fn init_dir() -> DRes<String> {
     return Ok(path);
 }
 
-pub fn find_delim(buf: &[u8]) -> Option<usize> {
+pub fn find_delim(buf: &[u8], pat: u8) -> Option<usize> {
     for (i, char) in buf.iter().enumerate() {
-        if *char == b';' {
+        if *char == pat {
             return Some(i);
         }
     }
 
     return None;
 }
-

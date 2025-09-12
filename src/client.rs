@@ -2,6 +2,7 @@ use std::{
     env::var,
     sync::mpsc,
     path::Path,
+    str::Utf8Error,
     fs,
 };
 use notify::{
@@ -9,11 +10,13 @@ use notify::{
     Watcher,
     RecursiveMode,
     EventKind,
+    Event,
 };
 use anyhow::anyhow;
 use crate::{
     shared_consts::*, 
     shared_fn::*,
+    conf::Conf,
 };
 use qrexec_binds::{QrexecClient, QIO};
 
@@ -24,18 +27,18 @@ pub fn client_main() -> DRes<()> {
         "Error: ZATHURA_BMARK_VM env var is not present";
 
     let mut recv_seq_buf = [0u8; 1];
+    let mut rbuf = [0u8; BLEN];
+    let conf = Conf::new()?;
 
-    let dpath = init_dir()?;
-    let path = Path::new(&dpath);
+    let zstate_path_string = init_dir()?;
+    let zstate_path = Path::new(&zstate_path_string);
 
-    let vm_name = var(ZATHURA_BMARK_VM_VAR).or(
-        Err(anyhow!(ZATHURA_BMARK_VM_VAR_ERR)))?;
 
     let mut qrx = QrexecClient::<KIB64>::new(
-        &vm_name, RPC_SERVICE_NAME,
+        &conf.target_vm, RPC_SERVICE_NAME,
         None, None)?;
 
-    restore_zathura_fs(&mut qrx, &dpath)?;
+    initialize_files(&mut qrx, &conf, &mut rbuf)?;
 
     let (tx, rx) = mpsc::channel();
     let mut watcher = recommended_watcher(tx)?;
@@ -63,80 +66,94 @@ pub fn client_main() -> DRes<()> {
     } 
 }
 
-fn restore_booknames(
-    qrx: &mut QrexecClient::<KIB64>,
-    book_dir: &str, 
+fn initialize_files(
+    qrx: &mut QrexecClient,
+    conf: &Conf, 
+    rbuf: &mut [u8; BLEN],
 ) -> DRes<()> {
-    let mut rbuf = [0u8; WBUF_LEN];
-    let mut bnames;
-    let mut bn_len;
+    get_booknames(qrx, conf, rbuf)?;
+    get_state_fs(qrx, conf, rbuf)?;
+    return Ok(());
+}
 
-    let nb = qrx.read(&mut rbuf)?;
+fn request_handler(
+    qrx: &mut QrexecClient,
+    conf: &Conf,
+    rbuf: &mut [u8; BLEN],
+    event: Event,
+) -> DRes<()> {
+    match event
 
-    // have to scope here or rust's borrow checker will complain
-    {
-    let iref_rbuf = &rbuf[..nb];
-    let buf_cont = str::from_utf8(iref_rbuf)?;
-    bnames = buf_cont.split(';')
-        .map(|x| x.to_owned())
-        .collect::<Vec<String>>();
-    }
+    return Ok(());
+}
 
-    bn_len = bnames.len();
-    assert!(
-        bn_len >= 1,
-        "{}", MSG_FORMAT_ERR);
+fn get_booknames(
+    qrx: &mut QrexecClient::<KIB64>,
+    conf: &Conf, 
+    rbuf: &mut [u8; BLEN],
+) -> DRes<()> {
+    let mut bnames = vec!();
+    let mut rnb;
+    let mut cont;
 
-    let num_books = bnames[0].parse::<usize>()?;
+    qrx.write(GET_BOOKNAMES)?;
+    rnb = qrx.read(rbuf)?;
+    qrx.write(RECV_SEQ)?;
 
-    while num_books != (bn_len - 1) && nb == WBUF_LEN {
-        let old_len = bn_len;
+    cont = &rbuf[..rnb];
+    let delim_idx = find_delim(cont, b';').ok_or(
+        anyhow!(MSG_FORMAT_ERR))?;
+    let split = cont.split_at(delim_idx);
+    let header = split.0;
+    cont = split.1;
 
-        let nb = qrx.read(&mut rbuf)?;
+    let num_reads = {
+        let delim_idx = find_delim(header, b':').ok_or(
+            anyhow!(MSG_FORMAT_ERR))?;
+        let (_, u32) = header.split_at(delim_idx + 1);
+        u32::from_be_bytes(u32.try_into()?)
+    };
 
-        let buf_cont = str::from_utf8(&rbuf[..nb])?;
-        bnames.extend(
-            buf_cont.split(';')
-                .map(|x| x.to_owned()));
+    let mut push_names = || -> Result<(), Utf8Error> {
+        bnames.extend(str::from_utf8(cont)?
+            .split(';')
+            .map(|x| x.to_string()));
+        Ok(())
+    };
+    push_names()?;
 
-        bn_len = bnames.len();
-        if old_len == bn_len {
-            Err(anyhow!(BNAME_NE_SIZE_ERR))?;
-        }
+    for _ in 0..(num_reads - 1) {
+        rnb = qrx.read(rbuf)?;
+        let cont = &rbuf[..nb];
+        push_names()?;
     } 
 
     for bname in bnames {
-        fs::write(
-            &format!("{book_dir}/{bname}"),
-            "")?;
+        fs::File::create(
+            &format!("{}/{}", conf.book_dir, bname))?;
     }
 
     return Ok(());
 }
 
-// format: 
-//   query: book;bookname 
-//   response: num_reads;content
-//   subsequents: content ... 
-fn restore_book(
+fn get_book(
     qrx: &mut QrexecClient::<KIB64>,
+    conf: &Conf,
     bname: &str, 
-    book_dir: &str,
+    rbuf: &mut [u8; BLEN], 
 ) -> DRes<()> {
-    let mut buf = [0u8; WBUF_LEN];
     let mut book = Vec::<u8>::new();
     let mut rnb;
 
-    let query = format!("book;{bname}");
+    let mut query = vec!();
+        query.extend_from_slice(VAR_GET_BOOK);
+        query.extend_from_slice(bname.as_bytes());
+
     let qlen = query.len();
     assert!(
-        qlen < WBUF_LEN,
+        qlen < BLEN,
         "{}", MSG_LEN_WBUF_ERR);
-
-    let wnb = qrx.write(query.as_bytes())?; 
-    assert!(
-        wnb == query.len(), 
-        "{}", WBYTES_NE_LEN_ERR);
+    qrx.write(&query)?; 
 
     rnb = qrx.read(&mut buf)?;
 

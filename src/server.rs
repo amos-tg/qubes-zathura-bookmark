@@ -7,6 +7,7 @@ use qrexec_binds::{
     QrexecServer, 
     QIO,
 };
+use anyhow::anyhow;
 
 pub fn server_main() -> DRes<()> {
     let dpath = init_dir()?;
@@ -14,7 +15,7 @@ pub fn server_main() -> DRes<()> {
 
     restore_zathura_fs(&mut qrx, &dpath)?;
 
-    let mut buf = [0u8; WBUF_LEN];
+    let mut buf = [0u8; BLEN];
     let recv_seq_buf = [1u8];
     loop {
         request_handler(&mut qrx)?;
@@ -26,8 +27,11 @@ fn request_handler(
     rbuf: &mut [u8],
 ) -> DRes<()> {
     let nb = qrx.read(rbuf);
-    find_delim()
-    match 
+    let id = find_delim(&rbuf[..nb]).ok_or(
+        anyhow!(MSG_FORMAT_ERR))?;
+
+    let request = str::from_utf8(&rbuf[..id])?;
+    
 
     return Ok(());
 }
