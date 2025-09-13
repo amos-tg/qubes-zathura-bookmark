@@ -27,9 +27,25 @@ pub fn init_dir() -> DRes<String> {
 pub fn find_delim(buf: &[u8], pat: u8) -> Option<usize> {
     for (i, char) in buf.iter().enumerate() {
         if *char == pat {
-            return Some(i);
-        }
-    }
+            return Some(i); } }
 
     return None;
 }
+
+pub fn num_reads_encode(bytes: u32) -> [u8; 4] {
+    #[cfg(target_endian = "big")]
+    return u32::to_be_bytes(bytes);
+
+    #[cfg(target_endian = "little")]
+    return u32::to_le_bytes(bytes);
+}
+
+pub fn num_reads_decode(bytes: [u8; 4]) -> u32 {
+    #[cfg(target_endian = "big")]
+    return u32::from_be_bytes(bytes);
+
+    #[cfg(target_endian = "little")]
+    return u32::from_le_bytes(bytes);
+}
+
+

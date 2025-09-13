@@ -95,7 +95,18 @@ fn get_booknames(
     let mut bnames = vec!();
     let mut rnb;
     let mut cont;
+    let num_reads;
 
+    macro_rules! push_names {
+        ($vec_names:expr, $buf:expr) => {
+            $vec_names.extend(
+                str::from_utf8($buf)?
+                    .split(';')
+                    .map(|x| x.to_string()))
+        }; 
+    }
+
+    assert!(GET_BOOKNAMES.len() < BLEN, "{}", WBYTES_NE_LEN_ERR);
     qrx.write(GET_BOOKNAMES)?;
     rnb = qrx.read(rbuf)?;
     qrx.write(RECV_SEQ)?;
@@ -103,29 +114,19 @@ fn get_booknames(
     cont = &rbuf[..rnb];
     let delim_idx = find_delim(cont, b';').ok_or(
         anyhow!(MSG_FORMAT_ERR))?;
+
     let split = cont.split_at(delim_idx);
-    let header = split.0;
-    cont = split.1;
+    let num_reads_bytes = split.0;
+    cont = &split.1[1..];
 
-    let num_reads = {
-        let delim_idx = find_delim(header, b':').ok_or(
-            anyhow!(MSG_FORMAT_ERR))?;
-        let (_, u32) = header.split_at(delim_idx + 1);
-        u32::from_be_bytes(u32.try_into()?)
-    };
+    num_reads = num_reads_decode(num_reads_bytes.try_into()?);
 
-    let mut push_names = || -> Result<(), Utf8Error> {
-        bnames.extend(str::from_utf8(cont)?
-            .split(';')
-            .map(|x| x.to_string()));
-        Ok(())
-    };
-    push_names()?;
+    push_names!(bnames, cont);
 
     for _ in 0..(num_reads - 1) {
         rnb = qrx.read(rbuf)?;
-        let cont = &rbuf[..nb];
-        push_names()?;
+        qrx.write(RECV_SEQ)?;
+        push_names!(bnames, &rbuf[..rnb]);
     } 
 
     for bname in bnames {
@@ -143,35 +144,34 @@ fn get_book(
     rbuf: &mut [u8; BLEN], 
 ) -> DRes<()> {
     let mut book = Vec::<u8>::new();
-    let mut rnb;
+    let mut rnb: usize;
 
     let mut query = vec!();
         query.extend_from_slice(VAR_GET_BOOK);
         query.extend_from_slice(bname.as_bytes());
-
+        query.push(b';');
     let qlen = query.len();
-    assert!(
-        qlen < BLEN,
-        "{}", MSG_LEN_WBUF_ERR);
+    assert!(qlen < BLEN, "{}", MSG_LEN_WBUF_ERR);
+
     qrx.write(&query)?; 
+    rnb = qrx.read(rbuf)?;
+    qrx.write(RECV_SEQ)?;
 
-    rnb = qrx.read(&mut buf)?;
+    let delim_idx = find_delim(&rbuf[..rnb], b';')
+        .ok_or(anyhow!(MSG_FORMAT_ERR))?;
 
-    let delim_idx = find_delim(&buf[..rnb]).ok_or(
-        anyhow!(MSG_FORMAT_ERR))?;
-    let num_reads = str::from_utf8(&buf[..delim_idx])?
-        .parse::<usize>()?;
+    let num_reads = num_reads_decode(
+        rbuf[..delim_idx].try_into()?);
 
-    book.extend_from_slice(&buf[(delim_idx + 1)..]);
+    book.extend_from_slice(&rbuf[(delim_idx + 1)..]);
 
     for _ in 0..num_reads {
-        rnb = qrx.read(&mut buf)?; 
-        book.extend_from_slice(&buf[..rnb]);
+        rnb = qrx.read(rbuf)?; 
+        qrx.write(RECV_SEQ)?;
+        book.extend_from_slice(&rbuf[..rnb]);
     }
 
-    fs::write(
-        &format!("{book_dir}/{bname}"),
-        book)?; 
+    fs::write(&format!("{}/{}", conf.book_dir, bname), book)?; 
 
     return Ok(());
 }
@@ -180,28 +180,7 @@ fn restore_zathura_fs(
     qrx: &mut QrexecClient::<KIB64>,
     zstate_dir: &str,
 ) -> DRes<()> {
-    let mut buf = [0u8; WBUF_LEN];
-    let recv_seq_buf = [RECV_SEQ; 1];
-    let (mut nb, mut rnb);
 
-    for _ in FILES {
-        rnb = qrx.read(&mut buf[..BLEN])?; 
-        nb = qrx.write(&recv_seq_buf)?;
-        assert!(nb == 1);
-
-        if buf.starts_with(NONE) {
-            continue;
-        }   
-
-        let read_cont = str::from_utf8(&buf[..rnb])?;
-        let (fname, fcont) = read_cont.split_at(
-            read_cont.find(';').ok_or(
-                anyhow!(NAME_DELIM_ERR))?);
-
-        fs::write(
-            format!("{}/{}", zstate_dir, fname),
-            fcont)?;
-    }
 
     return Ok(());
 }

@@ -27,14 +27,17 @@ pub const GET_BOOKNAMES: &[u8] = b"booknames;";
 
 // client request
 pub const VAR_GET_BOOK: &[u8] = b"getbook:";//<bookname>;
+//                                            
 // server response
 // <num_reads>;<book_content>
+//
 // client acknowledgment 
 // RECV_SEQ
 //
 // while (num_reads indicates more) {
 //  server response
 //  <book_content>
+//
 //  client ack
 //  RECV_SEQ
 // }
