@@ -180,7 +180,7 @@ fn restore_zathura_fs(
     qrx: &mut QrexecClient::<KIB64>,
     zstate_dir: &str,
 ) -> DRes<()> {
-
+    
 
     return Ok(());
 }

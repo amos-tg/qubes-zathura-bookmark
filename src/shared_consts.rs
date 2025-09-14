@@ -50,8 +50,10 @@ pub const VAR_SEND_SFILE: &[u8] = b"sfile:";//<sfilename>:<num_reads>;<sfile_con
 
 // client request
 pub const GET_SFILES: &[u8] = b"initsfs;";
+
 // server response 
 pub const VAR_SEND_NUM_SFILES: &[u8] = b"numfiles:";//<num_sfiles>;
+
 // client acknowledgment
 // &[RECV_SEQ]
 //
