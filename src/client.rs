@@ -1,8 +1,6 @@
 use std::{
-    env::var,
     sync::mpsc,
     path::Path,
-    str::Utf8Error,
     fs,
 };
 use notify::{
@@ -10,7 +8,6 @@ use notify::{
     Watcher,
     RecursiveMode,
     EventKind,
-    Event,
 };
 use anyhow::anyhow;
 use crate::{
@@ -22,8 +19,6 @@ use qrexec_binds::{QrexecClient, QIO};
 
 pub fn client_main() -> DRes<()> {
     const RPC_SERVICE_NAME: &str = "qubes.ZathuraMgmt";
-    const ZATHURA_BMARK_VM_VAR: &str = "ZATHURA_BMARK_VM";
-    const ZATHURA_BMARK_VM_VAR_ERR: &str = 
         "Error: ZATHURA_BMARK_VM env var is not present";
 
     let mut recv_seq_buf = [0u8; 1];
@@ -32,21 +27,33 @@ pub fn client_main() -> DRes<()> {
 
     let zstate_path_string = init_dir()?;
     let zstate_path = Path::new(&zstate_path_string);
-
+    let book_path = Path::new(&conf.book_dir);
 
     let mut qrx = QrexecClient::<KIB64>::new(
         &conf.target_vm, RPC_SERVICE_NAME,
         None, None)?;
 
-    initialize_files(&mut qrx, &conf, &mut rbuf)?;
+    initialize_files(
+        &mut qrx, &conf, &zstate_path_string, &mut rbuf)?;
 
     let (tx, rx) = mpsc::channel();
-    let mut watcher = recommended_watcher(tx)?;
-    watcher.watch(&path, RecursiveMode::Recursive)?;
+    let mut book_watcher = recommended_watcher(tx.clone())?;
+    let mut state_watcher = recommended_watcher(tx)?;
+
+    state_watcher.watch(zstate_path, RecursiveMode::Recursive)?;
+    book_watcher.watch(book_path, RecursiveMode::Recursive)?;
     loop {
+        // the state files need to be sent 
+        // over for :
+        //  Create && Modify EventKinds
+        //
+        // the book files need to be sent 
+        // over for the : 
+        //  
+        //  Access EventKind
+        //
         let event = rx.recv()??;
         match event.kind { 
-            EventKind::Remove(_) => continue,
             EventKind::Access(_) => continue, 
             _ => (),
         }
@@ -59,30 +66,21 @@ pub fn client_main() -> DRes<()> {
             qrx.write(&fcont[..fc_len])?;
             qrx.read(&mut recv_seq_buf)?;
 
-            if recv_seq_buf[0] != RECV_SEQ {
-                return Err(anyhow!(RECV_SEQ_ERR).into());
-            };
+            //if recv_seq_buf[0] != RECV_SEQ {
+            //    return Err(anyhow!(RECV_SEQ_ERR).into());
+            //};
         }
     } 
 }
 
 fn initialize_files(
-    qrx: &mut QrexecClient,
+    qrx: &mut QrexecClient::<KIB64>,
     conf: &Conf, 
+    zstate_dir: &str,
     rbuf: &mut [u8; BLEN],
 ) -> DRes<()> {
     get_booknames(qrx, conf, rbuf)?;
-    get_state_fs(qrx, conf, rbuf)?;
-    return Ok(());
-}
-
-fn request_handler(
-    qrx: &mut QrexecClient,
-    conf: &Conf,
-    rbuf: &mut [u8; BLEN],
-    event: Event,
-) -> DRes<()> {
-    match event
+    get_state_fs(qrx, zstate_dir, rbuf)?;
 
     return Ok(());
 }
@@ -176,11 +174,30 @@ fn get_book(
     return Ok(());
 }
 
-fn restore_zathura_fs(
+fn get_state_fs(
     qrx: &mut QrexecClient::<KIB64>,
     zstate_dir: &str,
+    rbuf: &mut [u8; BLEN],
 ) -> DRes<()> {
-    
+    let mut nb; 
+
+    qrx.write(GET_SFILES)?;
+    nb = qrx.read(rbuf)?;
+    qrx.write(RECV_SEQ)?;
+
+    let id = find_delim(&rbuf[..nb], b':')
+        .ok_or(anyhow!(MSG_FORMAT_ERR))?;
+
+    let mut num_files = num_reads_decode(
+        rbuf[(id + 1)..nb].try_into()?);
+
+    while num_files != 0 {
+        nb = qrx.read(rbuf)?;
+        recv_file(qrx, zstate_dir, rbuf, nb)?;
+        qrx.write(RECV_SEQ)?;
+
+        num_files -= 1; 
+    }
 
     return Ok(());
 }

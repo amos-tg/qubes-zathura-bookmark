@@ -1,12 +1,8 @@
-use crate::{
-    shared_consts::*,
-    conf::Conf,
-};
+use crate::shared_consts::*;
 use anyhow::anyhow;
 use std::{
     path::Path,
     fs,
-    ffi::OsStr,
     env::var,
     num::TryFromIntError,
 };
@@ -68,12 +64,9 @@ pub fn num_reads_decode(bytes: [u8; 4]) -> u32 {
     return u32::from_le_bytes(bytes);
 }
 
-/// this function assumes that the fpath
-/// absolute path exists in the file system.
 pub fn send_file(
     qrx: &mut impl QIO, 
     fpath: &Path, 
-    conf: &Conf,
     rbuf: &mut [u8; BLEN],
 ) -> DRes<()> {
     let fcont = fs::read_to_string(&fpath)?.into_bytes();

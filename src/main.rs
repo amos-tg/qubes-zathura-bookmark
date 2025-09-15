@@ -1,4 +1,6 @@
-mod req; 
+#[cfg(test)]
+mod test;
+
 mod conf;
 mod shared_fn;
 mod shared_consts;
