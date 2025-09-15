@@ -8,6 +8,15 @@ pub type DRes<T> = Result<T, Box<dyn Error>>;
 // <num_reads> = 32 bit / four byte sequence
 //               this is not converted to &str
 //               but is taken as a single num
+//
+// all the recv functions are a result of 
+// a request having been read and matched 
+// to one of the protocols below, as a result
+// of this pre-req, the recv functions assume 
+// that rbuf (read buffer) already contains 
+// the contents of the first read call which 
+// was used to match the request.
+//
 
 // client request
 pub const GET_BOOKNAMES: &[u8] = b"booknames;";
@@ -44,8 +53,19 @@ pub const VAR_GET_BOOK: &[u8] = b"getbook:";//<bookname>;
 
 // client request
 pub const VAR_SEND_SFILE: &[u8] = b"sfile:";//<sfilename>:<num_reads>;<sfile_contents>
-// server acknowledgment                                            
-// &[RECV_SEQ]
+
+// server acknowledgment 
+// RECV_SEQ
+
+// loop (while num_reads indicates) {
+// 
+// client response
+// <sfile_contents>
+//      
+// server ack
+// RECV_SEQ
+//
+// }
 
 
 // client request
@@ -55,7 +75,7 @@ pub const GET_SFILES: &[u8] = b"initsfs;";
 pub const VAR_SEND_NUM_SFILES: &[u8] = b"numfiles:";//<num_sfiles>;
 
 // client acknowledgment
-// &[RECV_SEQ]
+// RECV_SEQ
 //
 // loop over <num_sfiles> {
 //
@@ -63,12 +83,13 @@ pub const VAR_SEND_NUM_SFILES: &[u8] = b"numfiles:";//<num_sfiles>;
 // VAR_SEND_SFILE
 //
 // client acknowledgment 
-// &[RECV_SEQ]
+// RECV_SEQ
 //
 // }
 
 
 
+pub const NUM_READS_LEN: usize = 4;
 pub const CONF_PATH: &str = 
     "/etc/qubes-zathura-bookmark/qzb.conf";
 pub const KIB64: usize = 65536;
@@ -81,8 +102,6 @@ pub const INPUT_HISTORY_FNAME: &str = "input-history";
 pub const BMARKS_FNAME: &str = "bookmarks";
 pub const FILES: [&str; 3] = 
     [BMARKS_FNAME, INPUT_HISTORY_FNAME, HISTORY_FNAME];
-
-pub type RBUF = [u8;BLEN];
 
 pub const RECV_SEQ_ERR: &str = 
     "Error: read byte did not match the RECV_SEQ sequence";
@@ -100,3 +119,5 @@ pub const MSG_LEN_WBUF_ERR: &str =
     "Error: the length written over qrx cannot exceed WBUF_LEN.";
 pub const CONF_EXISTS_ERR: &str = 
     "Error: the configuration file does not exist";
+pub const MISSING_BASENAME: &str = 
+    "Error: the path doesn't contain a basename";
