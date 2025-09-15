@@ -21,7 +21,6 @@ pub fn client_main() -> DRes<()> {
     const RPC_SERVICE_NAME: &str = "qubes.ZathuraMgmt";
         "Error: ZATHURA_BMARK_VM env var is not present";
 
-    let mut recv_seq_buf = [0u8; 1];
     let mut rbuf = [0u8; BLEN];
     let conf = Conf::new()?;
 
@@ -37,6 +36,7 @@ pub fn client_main() -> DRes<()> {
         &mut qrx, &conf, &zstate_path_string, &mut rbuf)?;
 
     let (tx, rx) = mpsc::channel();
+
     let mut book_watcher = recommended_watcher(tx.clone())?;
     let mut state_watcher = recommended_watcher(tx)?;
 
@@ -53,22 +53,18 @@ pub fn client_main() -> DRes<()> {
         //  Access EventKind
         //
         let event = rx.recv()??;
-        match event.kind { 
-            EventKind::Access(_) => continue, 
-            _ => (),
-        }
-        for path in event.paths {
-            let fcont = fs::read_to_string(&path)?
-                .as_bytes()
-                .to_owned();
-            let fc_len = fcont.len();
-
-            qrx.write(&fcont[..fc_len])?;
-            qrx.read(&mut recv_seq_buf)?;
-
-            //if recv_seq_buf[0] != RECV_SEQ {
-            //    return Err(anyhow!(RECV_SEQ_ERR).into());
-            //};
+        match event.paths[0]
+            .as_path()
+            .parent()
+            .ok_or(anyhow!(MISSING_DIRNAME))?
+        {
+            zstate_path => {
+                todo!() 
+            },
+            book_path => {
+                todo!()
+            },
+            _ => unreachable!(), 
         }
     } 
 }

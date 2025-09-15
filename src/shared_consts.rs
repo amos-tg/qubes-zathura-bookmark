@@ -121,3 +121,5 @@ pub const CONF_EXISTS_ERR: &str =
     "Error: the configuration file does not exist";
 pub const MISSING_BASENAME: &str = 
     "Error: the path doesn't contain a basename";
+pub const MISSING_DIRNAME: &str = 
+    "Error: the path didn't yield a parent(alias dirname)";
