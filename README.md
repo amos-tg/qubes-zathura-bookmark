@@ -1,5 +1,8 @@
-This program doesn't work yet:
+This program doesn't work yet so don't try to use it:
 
+# this is outdated, I switched to a config file 
+# which I will document sooner or later
+# once everthing works properly.
 This program sends state files back and forth at startup
 and post modificatoin for zathura pdf reader from a 
 disposable VM to a non-disposable VM. 
