@@ -97,11 +97,6 @@ pub const BLEN: usize = KIB64 - 8;
 pub const RECV_SEQ: &[u8] = &[1];
 pub const NONE: &[u8] = b"Nothing;";
 pub const ZATHURA_PATH_POSTFIX: &str = ".local/share/zathura";
-pub const HISTORY_FNAME: &str = "history"; 
-pub const INPUT_HISTORY_FNAME: &str = "input-history";
-pub const BMARKS_FNAME: &str = "bookmarks";
-pub const FILES: [&str; 3] = 
-    [BMARKS_FNAME, INPUT_HISTORY_FNAME, HISTORY_FNAME];
 
 pub const RECV_SEQ_ERR: &str = 
     "Error: read byte did not match the RECV_SEQ sequence";
@@ -123,3 +118,5 @@ pub const MISSING_BASENAME: &str =
     "Error: the path doesn't contain a basename";
 pub const MISSING_DIRNAME: &str = 
     "Error: the path didn't yield a parent(alias dirname)";
+pub const INVALID_ENC: &str = 
+    "Error: the OsStr did not yield a utf8 string";

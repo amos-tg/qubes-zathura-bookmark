@@ -8,6 +8,7 @@ use notify::{
     Watcher,
     RecursiveMode,
     EventKind,
+    event::AccessKind,
 };
 use anyhow::anyhow;
 use crate::{
@@ -59,11 +60,39 @@ pub fn client_main() -> DRes<()> {
             .ok_or(anyhow!(MISSING_DIRNAME))?
         {
             zstate_path => {
-                todo!() 
-            },
+                match event.kind {
+                    EventKind::Create(ck) => {
+                        
+                    }
+                    EventKind::Modify(_) => {
+
+                    }
+                    _ => (),
+                }
+            }
             book_path => {
-                todo!()
-            },
+                match event.kind {
+                    EventKind::Access(ak) => {
+                        if let AccessKind::Close(_) = ak {
+                            continue;
+                        }
+
+                        for path in event.paths {
+                            let bname = path.file_name()
+                                .ok_or(anyhow!(MISSING_BASENAME))?
+                                .to_str()
+                                .ok_or(anyhow!(INVALID_ENC))?;
+
+                            get_book(
+                                &mut qrx,
+                                &conf,
+                                bname,
+                                &mut rbuf)?;
+                        }
+                    }
+                    _ => (),
+                }
+            }
             _ => unreachable!(), 
         }
     } 
