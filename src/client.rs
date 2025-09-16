@@ -26,6 +26,7 @@ pub fn client_main() -> DRes<()> {
     let conf = Conf::new()?;
 
     let zstate_path_string = init_dir()?;
+
     let zstate_path = Path::new(&zstate_path_string);
     let book_path = Path::new(&conf.book_dir);
 
@@ -43,34 +44,31 @@ pub fn client_main() -> DRes<()> {
 
     state_watcher.watch(zstate_path, RecursiveMode::Recursive)?;
     book_watcher.watch(book_path, RecursiveMode::Recursive)?;
+
     loop {
-        // the state files need to be sent 
-        // over for :
-        //  Create && Modify EventKinds
-        //
-        // the book files need to be sent 
-        // over for the : 
-        //  
-        //  Access EventKind
-        //
         let event = rx.recv()??;
+
         match event.paths[0]
             .as_path()
             .parent()
             .ok_or(anyhow!(MISSING_DIRNAME))?
         {
-            zstate_path => {
+            path if path == zstate_path => {
                 match event.kind {
-                    EventKind::Create(ck) => {
-                        
-                    }
-                    EventKind::Modify(_) => {
-
-                    }
+                    EventKind::Create(_) | EventKind::Modify(_) => {
+                        for path in event.paths {
+                            let f_d: bool = path.is_dir();
+                            send_file(
+                                &mut qrx,
+                                path.as_path(),
+                                &mut rbuf,
+                                f_d)?;
+                        }
+                    } 
                     _ => (),
                 }
             }
-            book_path => {
+            path if path == book_path => {
                 match event.kind {
                     EventKind::Access(ak) => {
                         if let AccessKind::Close(_) = ak {

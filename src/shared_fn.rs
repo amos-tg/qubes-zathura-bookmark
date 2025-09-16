@@ -8,16 +8,6 @@ use std::{
 };
 use qrexec_binds::QIO;
 
-/// returns DRes<(fname, fcontents)>
-#[inline(always)]
-pub fn parse_buf(buf: &[u8]) -> DRes<(&str, &str)> {
-        let read_cont = str::from_utf8(buf)?;
-        let (fname, fcont) = read_cont.split_at(
-            read_cont.find(';').ok_or(
-                anyhow!(NAME_DELIM_ERR))?);
-        return Ok((fname, fcont));
-}
-
 pub fn init_dir() -> DRes<String> {
     let path = format!(
         "{}/{}",
@@ -64,10 +54,12 @@ pub fn num_reads_decode(bytes: [u8; 4]) -> u32 {
     return u32::from_le_bytes(bytes);
 }
 
+/// if it is a dir pass true to is_dir
 pub fn send_file(
     qrx: &mut impl QIO, 
     fpath: &Path, 
     rbuf: &mut [u8; BLEN],
+    is_dir: bool,
 ) -> DRes<()> {
     let fcont = fs::read_to_string(&fpath)?.into_bytes();
 
@@ -87,6 +79,8 @@ pub fn send_file(
     cursor += set_slice(&mut rbuf[cursor..], fpath_ab);
     cursor += set_slice(&mut rbuf[cursor..], &[b':']);
     cursor += set_slice(&mut rbuf[cursor..], &num_reads_arr);
+    cursor += set_slice(&mut rbuf[cursor..], &[b':']);
+    cursor += set_slice(&mut rbuf[cursor..], &[is_dir as u8]); 
     cursor += set_slice(&mut rbuf[cursor..], &[b';']);
 
     if num_reads == 1 {
@@ -141,19 +135,17 @@ pub fn recv_file(
 
     let mut fcont = vec!();
     let mut nb;
-    let (fname_di, num_reads_di) = {
-        let di_fn = find_delim(&rbuf[REQ_LEN..], b':')
-            .ok_or(anyhow!(MSG_FORMAT_ERR))?;
-        let di_nr = find_delim(&rbuf[di_fn..], b';')
-            .ok_or(anyhow!(MSG_FORMAT_ERR))?;
-        (di_fn, di_nr)
-    };
+
+    let fname_di = find_delim(&rbuf[REQ_LEN..], b':')
+        .ok_or(anyhow!(MSG_FORMAT_ERR))?;
+    let num_reads_di = find_delim(&rbuf[fname_di..], b':')
+        .ok_or(anyhow!(MSG_FORMAT_ERR))?;
 
     let fname = str::from_utf8(&rbuf[REQ_LEN..fname_di])?
         .to_owned();
-
     let num_reads = num_reads_decode(
         rbuf[(fname_di + 1)..num_reads_di].try_into()?);
+    let is_dir = rbuf[num_reads_di + 1]; 
 
     fcont.extend_from_slice(
         &rbuf[(num_reads_di + 1)..inital_read_num_bytes]);
@@ -164,7 +156,11 @@ pub fn recv_file(
         qrx.write(RECV_SEQ)?;
     } 
 
-    fs::write(format!("{}/{}", state_dir, fname), fcont)?;
+    if is_dir == 0 {
+        fs::write(format!("{}/{}", state_dir, fname), fcont)?;
+    } else {
+        fs::create_dir_all(fname)?;
+    }
     
     return Ok(());
 }

@@ -52,7 +52,7 @@ pub const VAR_GET_BOOK: &[u8] = b"getbook:";//<bookname>;
 // }
 
 // client request
-pub const VAR_SEND_SFILE: &[u8] = b"sfile:";//<sfilename>:<num_reads>;<sfile_contents>
+pub const VAR_SEND_SFILE: &[u8] = b"sfile:";//<sfilename>:<num_reads>:<is_dir>;<sfile_contents>
 
 // server acknowledgment 
 // RECV_SEQ
