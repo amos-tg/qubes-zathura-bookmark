@@ -18,12 +18,11 @@ use crate::{
 };
 use qrexec_binds::{QrexecClient, QIO};
 
-pub fn client_main() -> DRes<()> {
+pub fn client_main(conf: Conf) -> DRes<()> {
     const RPC_SERVICE_NAME: &str = "qubes.ZathuraMgmt";
         "Error: ZATHURA_BMARK_VM env var is not present";
 
     let mut rbuf = [0u8; BLEN];
-    let conf = Conf::new()?;
 
     let zstate_path_string = init_dir()?;
 

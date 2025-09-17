@@ -6,6 +6,7 @@ use anyhow::anyhow;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Conf {
+    pub state_dir: String,
     pub book_dir: String, 
     pub model: String,
     pub target_vm: String,

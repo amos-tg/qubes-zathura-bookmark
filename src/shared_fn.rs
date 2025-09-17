@@ -1,4 +1,7 @@
-use crate::shared_consts::*;
+use crate::{
+    shared_consts::*,
+    conf::Conf,
+};
 use anyhow::anyhow;
 use std::{
     path::Path,
@@ -127,7 +130,7 @@ pub fn send_file(
 /// will know what request it is answering
 pub fn recv_file(
     qrx: &mut impl QIO, 
-    state_dir: &str, 
+    conf: &Conf,
     rbuf: &mut [u8; BLEN],
     inital_read_num_bytes: usize,
 ) -> DRes<()> {
@@ -157,7 +160,9 @@ pub fn recv_file(
     } 
 
     if is_dir == 0 {
-        fs::write(format!("{}/{}", state_dir, fname), fcont)?;
+        fs::write(
+            format!("{}/{}", conf.state_dir, fname),
+            fcont)?;
     } else {
         fs::create_dir_all(fname)?;
     }
