@@ -24,17 +24,14 @@ pub fn client_main(conf: Conf) -> DRes<()> {
 
     let mut rbuf = [0u8; BLEN];
 
-    let zstate_path_string = init_dir()?;
-
-    let zstate_path = Path::new(&zstate_path_string);
+    let zstate_path = Path::new(&conf.state_dir);
     let book_path = Path::new(&conf.book_dir);
 
     let mut qrx = QrexecClient::<KIB64>::new(
         &conf.target_vm, RPC_SERVICE_NAME,
         None, None)?;
 
-    initialize_files(
-        &mut qrx, &conf, &zstate_path_string, &mut rbuf)?;
+    initialize_files(&mut qrx, &conf, &mut rbuf)?;
 
     let (tx, rx) = mpsc::channel();
 
@@ -50,7 +47,7 @@ pub fn client_main(conf: Conf) -> DRes<()> {
         match event.paths[0]
             .as_path()
             .parent()
-            .ok_or(anyhow!(MISSING_DIRNAME))?
+            .ok_or(anyhow!(MISSING_DIRNAME_ERR))?
         {
             path if path == zstate_path => {
                 match event.kind {
@@ -76,9 +73,9 @@ pub fn client_main(conf: Conf) -> DRes<()> {
 
                         for path in event.paths {
                             let bname = path.file_name()
-                                .ok_or(anyhow!(MISSING_BASENAME))?
+                                .ok_or(anyhow!(MISSING_BASENAME_ERR))?
                                 .to_str()
-                                .ok_or(anyhow!(INVALID_ENC))?;
+                                .ok_or(anyhow!(INVALID_ENC_ERR))?;
 
                             get_book(
                                 &mut qrx,
@@ -98,11 +95,10 @@ pub fn client_main(conf: Conf) -> DRes<()> {
 fn initialize_files(
     qrx: &mut QrexecClient::<KIB64>,
     conf: &Conf, 
-    zstate_dir: &str,
     rbuf: &mut [u8; BLEN],
 ) -> DRes<()> {
     get_booknames(qrx, conf, rbuf)?;
-    get_state_fs(qrx, zstate_dir, rbuf)?;
+    get_state_fs(qrx, conf, rbuf)?;
 
     return Ok(());
 }
@@ -198,7 +194,7 @@ fn get_book(
 
 fn get_state_fs(
     qrx: &mut QrexecClient::<KIB64>,
-    zstate_dir: &str,
+    conf: &Conf,
     rbuf: &mut [u8; BLEN],
 ) -> DRes<()> {
     let mut nb; 
@@ -215,7 +211,7 @@ fn get_state_fs(
 
     while num_files != 0 {
         nb = qrx.read(rbuf)?;
-        recv_file(qrx, zstate_dir, rbuf, nb)?;
+        recv_file(qrx, conf, rbuf, nb)?;
         qrx.write(RECV_SEQ)?;
 
         num_files -= 1; 

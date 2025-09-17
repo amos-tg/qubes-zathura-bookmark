@@ -5,23 +5,10 @@ use crate::{
 use anyhow::anyhow;
 use std::{
     path::Path,
-    fs,
-    env::var,
     num::TryFromIntError,
+    fs,
 };
 use qrexec_binds::QIO;
-
-pub fn init_dir() -> DRes<String> {
-    let path = format!(
-        "{}/{}",
-        var("HOME").or(Err(anyhow!(HOME_VAR_ERR)))?,
-        ZATHURA_PATH_POSTFIX,
-    );
-
-    fs::create_dir_all(&path)?;
-
-    return Ok(path);
-}
 
 pub fn find_delim(buf: &[u8], pat: u8) -> Option<usize> {
     for (i, char) in buf.iter().enumerate() {
@@ -64,7 +51,7 @@ pub fn send_file(
     rbuf: &mut [u8; BLEN],
     is_dir: bool,
 ) -> DRes<()> {
-    let fcont = fs::read_to_string(&fpath)?.into_bytes();
+    let fcont = fs::read(&fpath)?;
 
     let fpath_ab = fpath.file_name()
         .ok_or(anyhow!(MISSING_BASENAME_ERR))?

@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, io};
 use crate::shared_consts::*;
 use serde::{Serialize, Deserialize};
 use serde_yaml;
@@ -17,6 +17,7 @@ impl Conf {
         let conf_path = Self::path()?;
         let raw = fs::read_to_string(&conf_path)?;
         let conf: Conf = serde_yaml::from_str(&raw)?;
+        Self::init_dirs(&conf)?;
         return Ok(conf);
     } 
 
@@ -26,5 +27,12 @@ impl Conf {
         } else {
             return Ok(CONF_PATH.to_owned());
         }
+    }
+
+    fn init_dirs(conf: &Conf) -> io::Result<()> {
+        fs::create_dir_all(&conf.book_dir)?;
+        fs::create_dir_all(&conf.state_dir)?;
+
+        return Ok(()); 
     }
 }

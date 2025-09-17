@@ -5,7 +5,7 @@ use crate::{
 };
 use std::{
     fs::{self, FileType},
-    path::PathBuf,
+    path::{PathBuf, Path},
 
 };
 use qrexec_binds::{QrexecServer, QIO};
@@ -13,9 +13,7 @@ use anyhow::anyhow;
 
 pub fn server_main(conf: Conf) -> DRes<()> {
     let mut buf = [0u8; BLEN];
-    let dpath = init_dir()?;
     let mut qrx = QrexecServer::<KIB64>::new();
-
     loop {
         request_handler(&mut qrx, &conf, &mut buf)?;
     }
@@ -32,7 +30,7 @@ fn request_handler(
             recv_file(qrx, conf, rbuf, nb)?,
 
         rbuf if rbuf.starts_with(VAR_GET_BOOK) => 
-            send_book()?,
+            send_book(qrx, conf, rbuf)?,
 
         rbuf if rbuf.starts_with(GET_SFILES) => 
             send_sfile_tree(qrx, conf, rbuf)?,
@@ -106,8 +104,37 @@ fn send_booknames(
     return Ok(());
 }
 
-fn send_book() -> DRes<()> {
+fn send_book(
+    qrx: &mut QrexecServer<KIB64>,
+    conf: &Conf,
+    rbuf: &mut [u8; BLEN],
+) -> DRes<()> {
+    let delim1 = find_delim(rbuf, b':')
+        .ok_or(anyhow!(MSG_FORMAT_ERR))?;
+    let delim2 = find_delim(rbuf, b';') 
+        .ok_or(anyhow!(MSG_FORMAT_ERR))?;
+
+    let bname = str::from_utf8(&rbuf[(delim1 + 1)..delim2])?;
+    let bpath = find_book(Path::new(&conf.book_dir), bname)?;
+
+    send_file(qrx, &bpath, rbuf, false)?;
+
     return Ok(());
+}
+
+fn find_book(book_dir: &Path, bname: &str) -> DRes<PathBuf> {
+    let path = book_dir.join(bname).to_owned();
+    if fs::exists(&path)? {
+        return Ok(path);
+    } else {
+        for file in fs::read_dir(book_dir)? {
+            let file = file?;
+            if file.file_type()?.is_dir() {
+                return find_book(&file.path(), bname);
+            } 
+        }
+        return Err(anyhow!(BOOK_UNAVAILABLE_ERR))?;
+    }                
 }
 
 fn send_sfile_tree(
