@@ -3,7 +3,11 @@ use crate::{
     shared_fn::*,
     conf::Conf,
 };
-use std::fs;
+use std::{
+    fs::{self, FileType},
+    path::PathBuf,
+
+};
 use qrexec_binds::{QrexecServer, QIO};
 use anyhow::anyhow;
 
@@ -54,7 +58,7 @@ fn send_booknames(
         bnames.extend_from_slice(
             bentry?.file_name()
                 .to_str() 
-                .ok_or(anyhow!(INVALID_ENC))?
+                .ok_or(anyhow!(INVALID_ENC_ERR))?
                 .as_bytes());
 
         bnames.push(b';');
@@ -111,29 +115,52 @@ fn send_sfile_tree(
     conf: &Conf,
     rbuf: &mut [u8; BLEN],
 ) -> DRes<()> {
-    recurse_fsend(
-        qrx, rbuf,
-        fs::read_dir(&conf.state_dir)?)?;
+    let mut file_paths: Vec<(PathBuf, FileType)> = vec!();
+    let mut cursor = 0usize;
+
+    recurse_files(
+        fs::read_dir(&conf.state_dir)?,
+        &mut file_paths)?;
+
+    let (num_files_bytes, _) = num_reads_encode(file_paths.len())?;
+
+    cursor += set_slice(rbuf, VAR_SEND_NUM_SFILES);
+    cursor += set_slice(&mut rbuf[cursor..], &[b':']);
+    cursor += set_slice(&mut rbuf[cursor..], &num_files_bytes);
+    cursor += set_slice(&mut rbuf[cursor..], &[b';']); 
+
+    qrx.write(&rbuf[..cursor])?;
+    let rnb = qrx.read(rbuf)?;
+    assert!(
+        rnb == 1
+        && rbuf.starts_with(RECV_SEQ),
+        "{}", RECV_SEQ_ERR);
+
+    for (fpath, ftype) in file_paths {
+        let ftype = ftype.is_dir();
+        send_file(qrx, fpath.as_path(), rbuf, ftype)?;
+    }
 
     return Ok(());
 }
 
-fn recurse_fsend(
-    qrx: &mut QrexecServer::<KIB64>,
-    rbuf: &mut [u8; BLEN],
-    read_dir: fs::ReadDir,
-) -> DRes<()> {
+fn recurse_files(
+    read_dir: fs::ReadDir, files: &mut Vec<(PathBuf, FileType)>,) -> DRes<()> {
     for file in read_dir {
         let file = file?;
         let path = file.path();
-        if file.file_type()?.is_dir() {
-            recurse_fsend(
-                qrx, rbuf,
-                fs::read_dir(&path)?);
-            send_file(qrx, &path, rbuf, true)?;
-        } else {
-            send_file(qrx, &path, rbuf, false)?;
-        } 
+        let file_type = file.file_type()?;
+
+        if file_type.is_file() {
+            files.push((path, file_type));
+        } else if file_type.is_dir() {
+            recurse_files(
+                fs::read_dir(&path)?,
+                files)?;
+            files.push((path, file_type));
+        } else if file_type.is_symlink() {
+            Err(anyhow!(SYMLINK_ERR))?;
+        }
     }
     
     return Ok(());

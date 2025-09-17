@@ -111,12 +111,16 @@ pub const MSG_FORMAT_ERR: &str =
 pub const BNAME_NE_SIZE_ERR: &str = 
     "Error: the number of booknames != sent value";
 pub const MSG_LEN_WBUF_ERR: &str = 
-    "Error: the length written over qrx cannot exceed WBUF_LEN.";
+    "Error: the length written over qrx cannot exceed\
+    WBUF_LEN.";
 pub const CONF_EXISTS_ERR: &str = 
     "Error: the configuration file does not exist";
-pub const MISSING_BASENAME: &str = 
+pub const MISSING_BASENAME_ERR: &str = 
     "Error: the path doesn't contain a basename";
-pub const MISSING_DIRNAME: &str = 
+pub const MISSING_DIRNAME_ERR: &str = 
     "Error: the path didn't yield a parent(alias dirname)";
-pub const INVALID_ENC: &str = 
+pub const INVALID_ENC_ERR: &str = 
     "Error: the OsStr did not yield a utf8 string";
+pub const SYMLINK_ERR: &str = 
+    "Error: recurse_files found a symlink, logic for\
+    handling symlinks is not defined.";

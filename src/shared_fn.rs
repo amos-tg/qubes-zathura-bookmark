@@ -67,7 +67,7 @@ pub fn send_file(
     let fcont = fs::read_to_string(&fpath)?.into_bytes();
 
     let fpath_ab = fpath.file_name()
-        .ok_or(anyhow!(MISSING_BASENAME))?
+        .ok_or(anyhow!(MISSING_BASENAME_ERR))?
         .as_encoded_bytes();
 
     const NUM_DELIMS: usize = 2;
@@ -108,19 +108,29 @@ pub fn send_file(
         && nb == 1,
         "{}", RECV_SEQ_ERR);
 
-    let mut end_i;
+    let mut wslice;
+    let mut rem_len;
+    let mut max_fit_len;
+    let mut nb;
     for _ in 0..(num_reads - 1) {
-        end_i = cursor + BLEN;
-        qrx.write(&fcont[cursor..(end_i)])?; 
-        cursor = end_i;
+        wslice = {
+            rem_len = fcont[cursor..].len();
+            max_fit_len = fcont[cursor..(cursor + BLEN)].len();
+            if rem_len > max_fit_len {
+                &fcont[cursor..]
+            } else {
+                &fcont[cursor..(cursor + BLEN)]
+            } 
+        };
 
-        let nb = qrx.read(rbuf)?;
+        cursor += qrx.write(wslice)?; 
+        nb = qrx.read(rbuf)?;
         assert!(
             rbuf[0] == RECV_SEQ[0]
             && nb == 1,
             "{}", RECV_SEQ_ERR);
     }
-    
+
     return Ok(());
 }
 
