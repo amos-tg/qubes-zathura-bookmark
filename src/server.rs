@@ -7,11 +7,14 @@ use std::fs;
 use qrexec_binds::{QrexecServer, QIO};
 use anyhow::anyhow;
 
-pub fn server_main() -> DRes<()> {
+pub fn server_main(conf: Conf) -> DRes<()> {
+    let mut buf = [0u8; BLEN];
     let dpath = init_dir()?;
     let mut qrx = QrexecServer::<KIB64>::new();
 
-    return Ok(());
+    loop {
+        request_handler(&mut qrx, &conf, &mut buf)?;
+    }
 }
 
 fn request_handler(
@@ -28,7 +31,7 @@ fn request_handler(
             send_book()?,
 
         rbuf if rbuf.starts_with(GET_SFILES) => 
-            send_sfile_tree()?,
+            send_sfile_tree(qrx, conf, rbuf)?,
 
         rbuf if rbuf.starts_with(GET_BOOKNAMES) => 
             send_booknames(qrx, conf, rbuf)?,
@@ -53,6 +56,7 @@ fn send_booknames(
                 .to_str() 
                 .ok_or(anyhow!(INVALID_ENC))?
                 .as_bytes());
+
         bnames.push(b';');
     }
 
@@ -90,8 +94,8 @@ fn send_booknames(
         } else {
             rem_nb
         };
-        bn_cursor += qrx.write(
-             &bnames[bn_cursor..cursor])?;
+
+        bn_cursor += qrx.write(&bnames[bn_cursor..cursor])?;
         nr -= 1;
     }
 
@@ -102,6 +106,35 @@ fn send_book() -> DRes<()> {
     return Ok(());
 }
 
-fn send_sfile_tree() -> DRes<()> {
+fn send_sfile_tree(
+    qrx: &mut QrexecServer::<KIB64>,
+    conf: &Conf,
+    rbuf: &mut [u8; BLEN],
+) -> DRes<()> {
+    recurse_fsend(
+        qrx, rbuf,
+        fs::read_dir(&conf.state_dir)?)?;
+
+    return Ok(());
+}
+
+fn recurse_fsend(
+    qrx: &mut QrexecServer::<KIB64>,
+    rbuf: &mut [u8; BLEN],
+    read_dir: fs::ReadDir,
+) -> DRes<()> {
+    for file in read_dir {
+        let file = file?;
+        let path = file.path();
+        if file.file_type()?.is_dir() {
+            recurse_fsend(
+                qrx, rbuf,
+                fs::read_dir(&path)?);
+            send_file(qrx, &path, rbuf, true)?;
+        } else {
+            send_file(qrx, &path, rbuf, false)?;
+        } 
+    }
+    
     return Ok(());
 }
