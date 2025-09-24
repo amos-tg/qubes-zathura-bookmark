@@ -155,8 +155,9 @@ fn get_booknames(
     } 
 
     for bname in bnames {
-        fs::File::create(
-            &format!("{}/{}", conf.book_dir, bname))?;
+        let path = format!("{}/{}", conf.book_dir, bname);
+        if fs::exists(&path)? { continue; }
+        fs::File::create(&path)?;
     }
 
     return Ok(());
