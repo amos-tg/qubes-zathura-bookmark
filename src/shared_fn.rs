@@ -26,8 +26,10 @@ pub fn find_delim(buf: &[u8], pat: u8) -> Option<usize> {
 pub fn num_reads_encode(
     bytes: usize,
 ) -> Result<([u8; 4], u32), TryFromIntError> {
-    let num_reads = 
-        ((bytes + 4) / BLEN).try_into()?;
+    let mut num_reads = ((bytes + 4) / BLEN).try_into()?;
+    if num_reads == 0 {
+        num_reads = 1;
+    }
 
     #[cfg(target_endian = "big")]
     return Ok((u32::to_be_bytes(num_reads), num_reads));

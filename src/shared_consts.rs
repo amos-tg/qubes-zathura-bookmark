@@ -24,6 +24,10 @@ pub const GET_BOOKNAMES: &[u8] = b"booknames;";
 // server response
 // <num_reads>;<bookname>;<bookname>;...
 //
+// or 
+//
+pub const NONE: &[u8] = b"none";
+//
 // client acknowledgment
 // RECV_SEQ
 //
@@ -98,8 +102,6 @@ pub const RECV_SEQ: &[u8] = &[1];
 
 pub const RECV_SEQ_ERR: &str = 
     "Error: read byte did not match the RECV_SEQ sequence";
-pub const WBYTES_NE_LEN_ERR: &str = 
-    "Error: bytes written did not equal len of msg"; 
 pub const MSG_FORMAT_ERR: &str = 
     "Error: the read bytes have incorrect formatting";
 pub const MSG_LEN_WBUF_ERR: &str = 

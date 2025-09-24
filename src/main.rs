@@ -31,7 +31,7 @@ fn main() {
             &client_main(conf),
             ERR_FNAME,
             ERR_LOG_DIR_NAME),
-        "vault" => err_append(
+        "server" => err_append(
             &server_main(conf),
             ERR_FNAME,
             ERR_LOG_DIR_NAME),

@@ -27,7 +27,7 @@ pub fn client_main(conf: Conf) -> DRes<()> {
     let zstate_path = Path::new(&conf.state_dir);
     let book_path = Path::new(&conf.book_dir);
 
-    let mut qrx = QrexecClient::<KIB64>::new(
+    let mut qrx = QrexecClient::new::<KIB64>(
         &conf.target_vm, RPC_SERVICE_NAME,
         None, None)?;
 
@@ -93,7 +93,7 @@ pub fn client_main(conf: Conf) -> DRes<()> {
 }
 
 fn initialize_files(
-    qrx: &mut QrexecClient::<KIB64>,
+    qrx: &mut QrexecClient,
     conf: &Conf, 
     rbuf: &mut [u8; BLEN],
 ) -> DRes<()> {
@@ -104,7 +104,7 @@ fn initialize_files(
 }
 
 fn get_booknames(
-    qrx: &mut QrexecClient::<KIB64>,
+    qrx: &mut QrexecClient,
     conf: &Conf, 
     rbuf: &mut [u8; BLEN],
 ) -> DRes<()> {
@@ -118,14 +118,23 @@ fn get_booknames(
             $vec_names.extend(
                 str::from_utf8($buf)?
                     .split(';')
-                    .map(|x| x.to_string()))
+                    .filter_map({ |x| 
+                        if !x.is_empty() { 
+                            Some(x.to_string())
+                        } else {
+                            None
+                        }
+                    }))
         }; 
     }
 
-    assert!(GET_BOOKNAMES.len() < BLEN, "{}", WBYTES_NE_LEN_ERR);
     qrx.write(GET_BOOKNAMES)?;
     rnb = qrx.read(rbuf)?;
     qrx.write(RECV_SEQ)?;
+
+    if rbuf.starts_with(NONE) {
+        return Ok(());
+    } 
 
     cont = &rbuf[..rnb];
     let delim_idx = find_delim(cont, b';').ok_or(
@@ -154,7 +163,7 @@ fn get_booknames(
 }
 
 fn get_book(
-    qrx: &mut QrexecClient::<KIB64>,
+    qrx: &mut QrexecClient,
     conf: &Conf,
     bname: &str, 
     rbuf: &mut [u8; BLEN], 
@@ -193,7 +202,7 @@ fn get_book(
 }
 
 fn get_state_fs(
-    qrx: &mut QrexecClient::<KIB64>,
+    qrx: &mut QrexecClient,
     conf: &Conf,
     rbuf: &mut [u8; BLEN],
 ) -> DRes<()> {

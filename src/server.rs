@@ -13,14 +13,14 @@ use anyhow::anyhow;
 
 pub fn server_main(conf: Conf) -> DRes<()> {
     let mut buf = [0u8; BLEN];
-    let mut qrx = QrexecServer::<KIB64>::new();
+    let mut qrx = QrexecServer::new();
     loop {
         request_handler(&mut qrx, &conf, &mut buf)?;
     }
 }
 
 fn request_handler(
-    qrx: &mut QrexecServer::<KIB64>,
+    qrx: &mut QrexecServer,
     conf: &Conf,
     rbuf: &mut [u8; BLEN],
 ) -> DRes<()> {
@@ -45,7 +45,7 @@ fn request_handler(
 }
 
 fn send_booknames(
-    qrx: &mut QrexecServer::<KIB64>,
+    qrx: &mut QrexecServer,
     conf: &Conf,
     rbuf: &mut [u8; BLEN],
 ) -> DRes<()> {
@@ -60,6 +60,16 @@ fn send_booknames(
                 .as_bytes());
 
         bnames.push(b';');
+    }
+
+    if bnames.is_empty() {
+        qrx.write(NONE)?; 
+        let rnb = qrx.read(rbuf)?;
+        assert!(
+            rnb == 1 
+            && rbuf[0] == RECV_SEQ[0],
+            "{}", MSG_FORMAT_ERR);
+        return Ok(());
     }
 
     let (nr_bytes, mut nr) = num_reads_encode(bnames.len())?;
@@ -105,7 +115,7 @@ fn send_booknames(
 }
 
 fn send_book(
-    qrx: &mut QrexecServer<KIB64>,
+    qrx: &mut QrexecServer,
     conf: &Conf,
     rbuf: &mut [u8; BLEN],
 ) -> DRes<()> {
@@ -138,7 +148,7 @@ fn find_book(book_dir: &Path, bname: &str) -> DRes<PathBuf> {
 }
 
 fn send_sfile_tree(
-    qrx: &mut QrexecServer::<KIB64>,
+    qrx: &mut QrexecServer,
     conf: &Conf,
     rbuf: &mut [u8; BLEN],
 ) -> DRes<()> {
