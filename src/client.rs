@@ -213,6 +213,10 @@ fn get_state_fs(
     nb = qrx.read(rbuf)?;
     qrx.write(RECV_SEQ)?;
 
+    if rbuf[..nb].starts_with(NONE) {
+        return Ok(()); 
+    }
+
     let id = find_delim(&rbuf[..nb], b':')
         .ok_or(anyhow!(MSG_FORMAT_ERR))?;
 

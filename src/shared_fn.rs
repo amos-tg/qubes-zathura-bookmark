@@ -10,6 +10,16 @@ use std::{
 };
 use qrexec_binds::QIO;
 
+#[macro_export]
+macro_rules! recv_seq {
+    ($qrx:expr, $rbuf:expr) => {
+        assert!(
+            1 == $qrx.read($rbuf)?
+            && $rbuf[0] == RECV_SEQ[0],
+            "{}", RECV_SEQ_ERR);
+    };
+}
+
 pub fn find_delim(buf: &[u8], pat: u8) -> Option<usize> {
     for (i, char) in buf.iter().enumerate() {
         if *char == pat {
@@ -78,11 +88,7 @@ pub fn send_file(
     if num_reads == 1 {
         cursor += set_slice(&mut rbuf[cursor..], &fcont); 
         qrx.write(&rbuf[..cursor])?;
-        let nb = qrx.read(rbuf)?;
-        assert!(
-            rbuf[0] == RECV_SEQ[0]
-            && nb == 1,
-            "{}", RECV_SEQ_ERR);
+        recv_seq!(qrx, rbuf);
 
         return Ok(());
     }
@@ -91,16 +97,11 @@ pub fn send_file(
     cursor = set_slice(&mut rbuf[cursor..], &fcont[..=remaining]); 
 
     qrx.write(rbuf)?;
-    let nb = qrx.read(rbuf)?;
-    assert!(
-        rbuf[0] == RECV_SEQ[0]
-        && nb == 1,
-        "{}", RECV_SEQ_ERR);
+    recv_seq!(qrx, rbuf);
 
     let mut wslice;
     let mut rem_len;
     let mut max_fit_len;
-    let mut nb;
     for _ in 0..(num_reads - 1) {
         wslice = {
             rem_len = fcont[cursor..].len();
@@ -113,11 +114,7 @@ pub fn send_file(
         };
 
         cursor += qrx.write(wslice)?; 
-        nb = qrx.read(rbuf)?;
-        assert!(
-            rbuf[0] == RECV_SEQ[0]
-            && nb == 1,
-            "{}", RECV_SEQ_ERR);
+        recv_seq!(qrx, rbuf);
     }
 
     return Ok(());

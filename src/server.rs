@@ -2,6 +2,7 @@ use crate::{
     shared_consts::*,
     shared_fn::*,
     conf::Conf,
+    recv_seq,
 };
 use std::{
     fs::{self, FileType},
@@ -64,11 +65,7 @@ fn send_booknames(
 
     if bnames.is_empty() {
         qrx.write(NONE)?; 
-        let rnb = qrx.read(rbuf)?;
-        assert!(
-            rnb == 1 
-            && rbuf[0] == RECV_SEQ[0],
-            "{}", MSG_FORMAT_ERR);
+        recv_seq!(qrx, rbuf);
         return Ok(());
     }
 
@@ -92,11 +89,7 @@ fn send_booknames(
 
     qrx.write(&rbuf[..cursor])?;
     nr -= 1;
-    let rnb = qrx.read(rbuf)?;
-    assert!(
-        rnb == 1
-        && rbuf[0] == RECV_SEQ[0],
-        "{}", RECV_SEQ_ERR);
+    recv_seq!(qrx, rbuf);
 
     let mut rem_nb;
     while nr != 0 { 
@@ -159,7 +152,14 @@ fn send_sfile_tree(
         fs::read_dir(&conf.state_dir)?,
         &mut file_paths)?;
 
-    let (num_files_bytes, _) = num_reads_encode(file_paths.len())?;
+    if file_paths.is_empty() {
+        qrx.write(NONE)?;
+        recv_seq!(qrx, rbuf);
+        return Ok(());
+    }
+
+    let (num_files_bytes, _) = num_reads_encode(
+        file_paths.len())?;
 
     cursor += set_slice(rbuf, VAR_SEND_NUM_SFILES);
     cursor += set_slice(&mut rbuf[cursor..], &[b':']);
@@ -167,11 +167,7 @@ fn send_sfile_tree(
     cursor += set_slice(&mut rbuf[cursor..], &[b';']); 
 
     qrx.write(&rbuf[..cursor])?;
-    let rnb = qrx.read(rbuf)?;
-    assert!(
-        rnb == 1
-        && rbuf.starts_with(RECV_SEQ),
-        "{}", RECV_SEQ_ERR);
+    recv_seq!(qrx, rbuf);
 
     for (fpath, ftype) in file_paths {
         let ftype = ftype.is_dir();
