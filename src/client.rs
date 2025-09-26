@@ -35,18 +35,16 @@ pub fn client_main(conf: Conf) -> DRes<()> {
 
     let (tx, rx) = mpsc::channel();
 
-    let mut book_watcher = recommended_watcher(tx.clone())?;
-    let mut state_watcher = recommended_watcher(tx)?;
+    let mut watcher = recommended_watcher(tx)?;
 
-    state_watcher.watch(zstate_path, RecursiveMode::Recursive)?;
-    book_watcher.watch(book_path, RecursiveMode::Recursive)?;
+    watcher.watch(zstate_path, RecursiveMode::Recursive)?;
+    watcher.watch(book_path, RecursiveMode::Recursive)?;
 
     loop {
         let event = rx.recv()??;
 
         match event.paths[0]
             .as_path()
-            .parent()
             .ok_or(anyhow!(MISSING_DIRNAME_ERR))?
         {
             path if path == zstate_path => {
@@ -90,6 +88,15 @@ pub fn client_main(conf: Conf) -> DRes<()> {
             _ => unreachable!(), 
         }
     } 
+}
+
+fn state_noti() -> DRes<()> {
+    return Ok(());
+}
+
+fn book_noti() -> DRes<()> {
+
+    return Ok(());
 }
 
 fn initialize_files(
