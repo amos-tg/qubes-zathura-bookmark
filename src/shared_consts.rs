@@ -123,3 +123,5 @@ pub const BOOK_UNAVAILABLE_ERR: &str =
     book directory";
 pub const INVALID_MODEL_ERR: &str = 
     "Error: the model (client/server, identifier) is invalid";
+pub const MISSING_FNAME_ERR: &str = 
+    "Error: the Event does not have a path name";

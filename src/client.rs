@@ -2,18 +2,24 @@ use crate::{
     shared_consts::*, 
     shared_fn::*,
     conf::Conf,
+    ERR_FNAME,
+    ERR_LOG_DIR_NAME,
 };
 use std::{
-    sync::mpsc,
     path::Path,
+    ffi::OsStr,
     fs,
 };
 use inotify::{
     Inotify,
     Event, 
+    Watches,
+    WatchMask,
+    WatchDescriptor,
 };
 use qrexec_binds::{QrexecClient, QIO};
 use anyhow::anyhow;
+use dbuggery::err_append;
 
 pub fn client_main(conf: Conf) -> DRes<()> {
     const RPC_SERVICE_NAME: &str = "qubes.ZathuraMgmt";
@@ -30,69 +36,98 @@ pub fn client_main(conf: Conf) -> DRes<()> {
 
     initialize_files(&mut qrx, &conf, &mut rbuf)?;
 
-    let (tx, rx) = mpsc::channel();
+    let mut inotify = Inotify::init()?;
+    let mut watches = inotify.watches(); 
 
-    let mut watcher = recommended_watcher(tx)?;
+    let mut state_wfds = vec!();
+    recurse_dir_watch(
+        WatchMask::CREATE | WatchMask::MODIFY,
+        &mut watches, zstate_path, &mut state_wfds)?;
 
-    watcher.watch(zstate_path, RecursiveMode::Recursive)?;
-    watcher.watch(book_path, RecursiveMode::Recursive)?;
+    let mut book_wfds = vec!();
+    recurse_dir_watch(
+        WatchMask::ACCESS,
+        &mut watches, book_path, &mut book_wfds)?;
+
+    let mut event_buf = [0u8; 8192];
+    let mut events;
 
     loop {
-        let event = rx.recv()??;
+        events = inotify.read_events_blocking(&mut event_buf)?;
 
-        match event.paths[0]
-            .as_path()
-            .ok_or(anyhow!(MISSING_DIRNAME_ERR))?
-        {
-            path if path == zstate_path => {
-                match event.kind {
-                    EventKind::Create(_) | EventKind::Modify(_) => {
-                        for path in event.paths {
-                            let f_d: bool = path.is_dir();
-                            send_file(
-                                &mut qrx,
-                                path.as_path(),
-                                &mut rbuf,
-                                f_d)?;
-                        }
-                    } 
-                    _ => (),
-                }
+        for event in events {
+            if state_wfds.contains(&event.wd) { 
+                err_append(
+                    &state_noti(&mut qrx, event, &mut rbuf), 
+                    ERR_FNAME, ERR_LOG_DIR_NAME);
+            } else if book_wfds.contains(&event.wd) { 
+                err_append(
+                    &book_noti(&mut qrx, event, &mut rbuf, &conf),
+                    ERR_FNAME, ERR_LOG_DIR_NAME);
             }
-            path if path == book_path => {
-                match event.kind {
-                    EventKind::Access(ak) => {
-                        if let AccessKind::Close(_) = ak {
-                            continue;
-                        }
-
-                        for path in event.paths {
-                            let bname = path.file_name()
-                                .ok_or(anyhow!(MISSING_BASENAME_ERR))?
-                                .to_str()
-                                .ok_or(anyhow!(INVALID_ENC_ERR))?;
-
-                            get_book(
-                                &mut qrx,
-                                &conf,
-                                bname,
-                                &mut rbuf)?;
-                        }
-                    }
-                    _ => (),
-                }
-            }
-            _ => unreachable!(), 
         }
-    } 
+    }
 }
 
-fn state_noti() -> DRes<()> {
+fn state_noti(
+    qrx: &mut QrexecClient,
+    event: Event<&OsStr>,
+    rbuf: &mut [u8; BLEN], 
+) -> DRes<()> {
+    let path = Path::new(
+        event.name
+            .ok_or(anyhow!(MISSING_FNAME_ERR))?
+            .to_str()
+            .ok_or(anyhow!(INVALID_ENC_ERR))?);
+
+    let is_dir = path.is_dir();
+    
+    send_file(qrx, path.into(), rbuf, is_dir)?;
+
     return Ok(());
 }
 
-fn book_noti() -> DRes<()> {
+fn book_noti(
+    qrx: &mut QrexecClient,
+    event: Event<&OsStr>,
+    rbuf: &mut [u8; BLEN],
+    conf: &Conf,
+) -> DRes<()> {
+    let path = Path::new(
+        event.name
+            .ok_or(anyhow!(MISSING_FNAME_ERR))?
+            .to_str()
+            .ok_or(anyhow!(INVALID_ENC_ERR))?);
 
+    if path.is_dir() { return Ok(()) }
+
+    let bname = path.file_name()
+        .ok_or(anyhow!(INVALID_ENC_ERR))?
+        .to_str()
+        .ok_or(anyhow!(INVALID_ENC_ERR))?;
+
+    get_book(qrx, conf, bname, rbuf)?;
+
+    return Ok(());
+}
+
+fn recurse_dir_watch(
+    watch_mask: WatchMask,
+    watches: &mut Watches,
+    dir_path: &Path,
+    wfd_vec: &mut Vec<WatchDescriptor>,
+) -> DRes<()> {
+    wfd_vec.push(watches.add(dir_path, watch_mask)?);
+
+    for file in fs::read_dir(dir_path)? {
+        let file = file?;
+        if file.file_type()?.is_dir() {
+            recurse_dir_watch(
+                watch_mask, watches,
+                &file.path(), wfd_vec)?
+        }
+    }
+    
     return Ok(());
 }
 
