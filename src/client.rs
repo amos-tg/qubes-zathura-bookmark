@@ -6,8 +6,10 @@ use crate::{
     ERR_LOG_DIR_NAME,
 };
 use std::{
+    thread::park_timeout,
     path::Path,
     ffi::OsStr,
+    io,
     fs,
 };
 use inotify::{
@@ -53,9 +55,25 @@ pub fn client_main(conf: Conf) -> DRes<()> {
     let mut events;
 
     loop {
-        events = inotify.read_events_blocking(&mut event_buf)?;
+        park_timeout(SECONDS_2);
 
-        for event in events {
+        get_booknames(&mut qrx, &conf, &mut rbuf)?;
+
+        events = match inotify.read_events(&mut event_buf) {
+            Ok(events) => Some(events),
+            Err(err) if err.kind() == io::ErrorKind::Interrupted => None, 
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock => None,
+            Err(err) => {
+                let err = Err(err);
+                err_append(&err, ERR_FNAME, ERR_LOG_DIR_NAME);
+                err?;
+                unreachable!();
+            }
+        };
+
+        if events.is_none() { continue }
+
+        for event in events.unwrap() {
             if state_wfds.contains(&event.wd) { 
                 err_append(
                     &state_noti(&mut qrx, event, &mut rbuf), 

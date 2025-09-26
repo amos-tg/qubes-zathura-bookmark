@@ -1,4 +1,7 @@
-use std::error::Error;
+use std::{
+    error::Error,
+    time::Duration,
+};
 
 pub type DRes<T> = Result<T, Box<dyn Error>>;
 
@@ -99,6 +102,7 @@ pub const CONF_PATH: &str =
 pub const KIB64: usize = 65536;
 pub const BLEN: usize = KIB64 - 8;
 pub const RECV_SEQ: &[u8] = &[1];
+pub const SECONDS_2: Duration = Duration::from_secs(1);
 
 pub const RECV_SEQ_ERR: &str = 
     "Error: read byte did not match the RECV_SEQ sequence";
@@ -111,8 +115,6 @@ pub const CONF_EXISTS_ERR: &str =
     "Error: the configuration file does not exist";
 pub const MISSING_BASENAME_ERR: &str = 
     "Error: the path doesn't contain a basename";
-pub const MISSING_DIRNAME_ERR: &str = 
-    "Error: the path didn't yield a parent(alias dirname)";
 pub const INVALID_ENC_ERR: &str = 
     "Error: the OsStr did not yield a utf8 string";
 pub const SYMLINK_ERR: &str = 
