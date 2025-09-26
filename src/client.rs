@@ -1,22 +1,19 @@
-use std::{
-    sync::mpsc,
-    path::Path,
-    fs,
-};
-use notify::{
-    recommended_watcher,
-    Watcher,
-    RecursiveMode,
-    EventKind,
-    event::AccessKind,
-};
-use anyhow::anyhow;
 use crate::{
     shared_consts::*, 
     shared_fn::*,
     conf::Conf,
 };
+use std::{
+    sync::mpsc,
+    path::Path,
+    fs,
+};
+use inotify::{
+    Inotify,
+    Event, 
+};
 use qrexec_binds::{QrexecClient, QIO};
+use anyhow::anyhow;
 
 pub fn client_main(conf: Conf) -> DRes<()> {
     const RPC_SERVICE_NAME: &str = "qubes.ZathuraMgmt";
