@@ -243,10 +243,21 @@ fn get_book(
     let delim_idx = find_delim(&rbuf[..rnb], b';')
         .ok_or(anyhow!(MSG_FORMAT_ERR))?;
 
-    let num_reads = num_reads_decode(
-        rbuf[..delim_idx].try_into()?);
+    let (header, cont) = (
+        &rbuf[..delim_idx],
+        &rbuf[(delim_idx+1)..rnb]); 
 
-    book.extend_from_slice(&rbuf[(delim_idx + 1)..]);
+    let num_reads_bytes = header
+        .split(|x|  *x == b':')
+        .skip(2)
+        .next()
+        .ok_or(anyhow!(MSG_FORMAT_ERR))?;
+
+
+    let num_reads = num_reads_decode(
+        num_reads_bytes.try_into()?);
+
+    book.extend_from_slice(cont);
 
     for _ in 0..num_reads {
         rnb = qrx.read(rbuf)?; 

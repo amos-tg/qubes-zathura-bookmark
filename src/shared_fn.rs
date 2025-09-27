@@ -65,20 +65,20 @@ pub fn send_file(
 ) -> DRes<()> {
     let fcont = fs::read(&fpath)?;
 
-    let fpath_ab = fpath.file_name()
+    let fname_bytes = fpath.file_name()
         .ok_or(anyhow!(MISSING_BASENAME_ERR))?
         .as_encoded_bytes();
 
     const NUM_DELIMS: usize = 2;
     let (num_reads_arr, num_reads)  = num_reads_encode(
         VAR_SEND_SFILE.len() 
-        + fpath_ab.len() 
+        + fname_bytes.len() 
         + fcont.len()
         + NUM_DELIMS)?;
 
     let mut cursor = 0usize;
     cursor += set_slice(&mut rbuf[cursor..], VAR_SEND_SFILE); 
-    cursor += set_slice(&mut rbuf[cursor..], fpath_ab);
+    cursor += set_slice(&mut rbuf[cursor..], fname_bytes);
     cursor += set_slice(&mut rbuf[cursor..], &[b':']);
     cursor += set_slice(&mut rbuf[cursor..], &num_reads_arr);
     cursor += set_slice(&mut rbuf[cursor..], &[b':']);
