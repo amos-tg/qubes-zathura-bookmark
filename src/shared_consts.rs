@@ -22,14 +22,14 @@ pub type DRes<T> = Result<T, Box<dyn Error>>;
 //
 
 // client request
-pub const GET_BOOKNAMES: &[u8] = b"booknames;";
+pub const GET_BOOKNAMES: &[u8] = b"0;";
 //
 // server response
 // <num_reads>;<bookname>;<bookname>;...
 //
 // or 
 //
-pub const NONE: &[u8] = b"none";
+pub const NONE: &[u8] = b"1";
 //
 // client acknowledgment
 // RECV_SEQ
@@ -42,7 +42,7 @@ pub const NONE: &[u8] = b"none";
 // }
 
 // client request
-pub const VAR_GET_BOOK: &[u8] = b"getbook:";//<bookname>;
+pub const VAR_GET_BOOK: &[u8] = b"2:";//<bookname>;
 //                                            
 // server response
 // <num_reads>;<book_content>
@@ -59,7 +59,7 @@ pub const VAR_GET_BOOK: &[u8] = b"getbook:";//<bookname>;
 // }
 
 // client request
-pub const VAR_SEND_SFILE: &[u8] = b"sfile:";//<sfilename>:<num_reads>:<is_dir>;<sfile_contents>
+pub const VAR_SEND_SFILE: &[u8] = b"3:";//<sfilename>:<num_reads>:<is_dir>;<sfile_contents>
 
 // server acknowledgment 
 // RECV_SEQ
@@ -76,10 +76,10 @@ pub const VAR_SEND_SFILE: &[u8] = b"sfile:";//<sfilename>:<num_reads>:<is_dir>;<
 
 
 // client request
-pub const GET_SFILES: &[u8] = b"initsfs;";
+pub const GET_SFILES: &[u8] = b"4;";
 
 // server response 
-pub const VAR_SEND_NUM_SFILES: &[u8] = b"numfiles:";//<num_sfiles>
+pub const VAR_SEND_NUM_SFILES: &[u8] = b"5:";//<num_sfiles>
 
 // client acknowledgment
 // RECV_SEQ
@@ -94,9 +94,6 @@ pub const VAR_SEND_NUM_SFILES: &[u8] = b"numfiles:";//<num_sfiles>
 //
 // }
 
-
-
-//pub const NUM_READS_LEN: usize = 4;
 pub const CONF_PATH: &str = 
     "/etc/qubes-zathura-bookmark/qzb.conf";
 pub const KIB64: usize = 65536;
