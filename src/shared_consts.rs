@@ -94,6 +94,15 @@ pub const VAR_SEND_NUM_SFILES: &[u8] = b"5:";//<num_sfiles>
 //
 // }
 
+// zathura notification message
+pub const ZBOOK_READ_NOTIFY: &[u8] = b"6;";//<book_name>
+//
+// client acknowledgement
+// RECV_SEQ
+//
+// client requests book from server using
+// VAR_GET_BOOK message sequence detailed above
+
 pub const CONF_PATH: &str = 
     "/etc/qubes-zathura-bookmark/qzb.conf";
 pub const KIB64: usize = 65536;
