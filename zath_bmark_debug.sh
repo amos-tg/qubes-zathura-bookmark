@@ -16,14 +16,14 @@ SERVER_VM_USER="user";
 SERVER_QINC="/home/$SERVER_VM_USER/QubesIncoming/dom0";
 SERVER_ZIP_PATH="$SERVER_QINC/$ZIP_FNAME";
 SERVER_SCRIPT_PATH="$SERVER_QINC/zath_bmark_vm_build.sh";
-SERVER_VM="zstate-server";
+SERVER_VM="dev";
 SERVER_PKG_NAME="qubes-zathura-bookmark";
 
 CLIENT_VM_USER="user";
 CLIENT_QINC="/home/$CLIENT_VM_USER/QubesIncoming/dom0";
 CLIENT_ZIP_PATH="$CLIENT_QINC/$ZIP_FNAME";
 CLIENT_SCRIPT_PATH="$CLIENT_QINC/zath_bmark_vm_build.sh";
-CLIENT_VM="reader";
+CLIENT_VM="build";
 CLIENT_PKG_NAME="qubes-zathura-bookmark";
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 

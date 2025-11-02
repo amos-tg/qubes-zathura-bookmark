@@ -162,7 +162,6 @@ fn send_sfile_tree(
         file_paths.len())?;
 
     cursor += set_slice(rbuf, VAR_SEND_NUM_SFILES);
-    cursor += set_slice(&mut rbuf[cursor..], &[b':']);
     cursor += set_slice(&mut rbuf[cursor..], &num_files_bytes);
     cursor += set_slice(&mut rbuf[cursor..], &[b';']); 
 

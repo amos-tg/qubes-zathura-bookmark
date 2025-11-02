@@ -25,7 +25,6 @@ use dbuggery::err_append;
 
 pub fn client_main(conf: Conf) -> DRes<()> {
     const RPC_SERVICE_NAME: &str = "qubes.ZathuraMgmt";
-        "Error: ZATHURA_BMARK_VM env var is not present";
 
     let mut rbuf = [0u8; BLEN];
 
