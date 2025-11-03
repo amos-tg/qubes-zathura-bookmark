@@ -6,34 +6,24 @@ use crate::{
     ERR_LOG_DIR_NAME,
 };
 use std::{
-    collections::HashMap, ffi::OsStr, fs::{self, ReadDir}, io::{self, Read}, os::unix::net::UnixStream, path::{Path, PathBuf}, thread::park_timeout
-};
-use inotify::{
-    Inotify,
-    Event, 
-    Watches,
-    WatchMask,
-    WatchDescriptor,
+    collections::HashMap,
+    time::Duration,
+    ffi::OsStr,
+    fs::{self, ReadDir},
+    io::{self, Read, ErrorKind::*},
+    os::unix::net::{UnixStream, UnixListener},
+    path::{Path, PathBuf}, 
+    thread::park_timeout,
 };
 use qrexec_binds::{QrexecClient, QIO};
 use anyhow::anyhow;
 use dbuggery::err_append;
 
-//FEATURE LIST
-//
-// * HashSet powered file diffing for state file updates | |
-//                                                     
-// * Bookname forwarding from   
-//
 
 pub fn client_main(conf: Conf) -> DRes<()> {
     const RPC_SERVICE_NAME: &str = "qubes.ZathuraMgmt";
 
     let mut rbuf = [0u8; BLEN];
-
-    let zstate_path = Path::new(&conf.state_dir);
-    let book_path = Path::new(&conf.book_dir);
-
     let mut qrx = QrexecClient::new::<KIB64>(
         &conf.target_vm, RPC_SERVICE_NAME,
         None, None)?;
@@ -43,65 +33,65 @@ pub fn client_main(conf: Conf) -> DRes<()> {
     loop {
              
     }
-
-    //let mut inotify = Inotify::init()?;
-    //let mut watches = inotify.watches(); 
-
-    //let mut state_wfds = vec!();
-    //recurse_dir_watch(
-    //    WatchMask::CREATE | WatchMask::MODIFY,
-    //    &mut watches, zstate_path, &mut state_wfds)?;
-
-    //let mut book_wfds = vec!();
-    //recurse_dir_watch(
-    //    WatchMask::ACCESS,
-    //    &mut watches, book_path, &mut book_wfds)?;
-
-    //let mut event_buf = [0u8; 8192];
-    //let mut events;
-
-    //loop {
-    //    park_timeout(SECONDS_2);
-
-    //    get_booknames(&mut qrx, &conf, &mut rbuf)?;
-
-    //    events = match inotify.read_events(&mut event_buf) {
-    //        Ok(events) => Some(events),
-    //        Err(err) if err.kind() == io::ErrorKind::Interrupted => None, 
-    //        Err(err) if err.kind() == io::ErrorKind::WouldBlock => None,
-    //        Err(err) => {
-    //            let err = Err(err);
-    //            err_append(&err, ERR_FNAME, ERR_LOG_DIR_NAME);
-    //            err?;
-    //            unreachable!();
-    //        }
-    //    };
-
-    //    if events.is_none() { continue }
-
-    //    for event in events.unwrap() {
-    //        if state_wfds.contains(&event.wd) { 
-    //            err_append(
-    //                &state_noti(&mut qrx, event, &mut rbuf), 
-    //                ERR_FNAME, ERR_LOG_DIR_NAME);
-    //        } else if book_wfds.contains(&event.wd) { 
-    //            err_append(
-    //                &book_noti(&mut qrx, event, &mut rbuf, &conf),
-    //                ERR_FNAME, ERR_LOG_DIR_NAME);
-    //        }
-    //    }
-    //}
 }
 
-fn handle_book_comms<'a>(
-    zsock: &mut UnixStream,
-    rbuf: &'a mut [u8; BLEN]
-) -> Result<Option<&'a [u8]>, io::Error> {
-    let nb = zsock.read(rbuf)?;
-    if nb > 0 {
-        return Ok(Some(&rbuf[..nb]));
-    } else {
-        return Ok(None);
+struct BookTx { 
+    sock: UnixListener,
+    conn: Option<UnixStream>, 
+}
+
+impl BookTx {
+    // binds the zathura unix stream socket
+    fn new(sock_path: impl AsRef<Path>) -> io::Result<Self> {
+        let sock = UnixListener::bind(sock_path.as_ref())?;
+        let conn = None;
+        return Ok(Self { sock, conn }); 
+    }
+
+    // blocks until zathura connects to the socket,
+    // returns immediately if conn is already Some(stream).
+    fn connect(&mut self) -> io::Result<()> {
+        if self.conn.is_some() {
+            return Ok(());
+        }
+
+        let (stream, _) = self.sock.accept()?;
+        stream.set_nonblocking(true)?;
+        stream.set_read_timeout(Some(Duration::from_secs(3)))?;
+        self.conn = Some(stream);
+        return Ok(()); 
+    } 
+
+    fn handler(
+        &mut self,
+        rbuf: &mut [u8; BLEN],
+        qrx: &mut QrexecClient
+    ) -> DRes<()> {
+        if self.conn.is_none() {
+            self.connect()?;
+        }
+
+        let mut conn = self.conn.take().unwrap();
+
+        let res = conn.read(rbuf);
+        let nb = match res {
+            Ok(0) => {
+                self.conn = None;
+                return Ok(());
+            }
+            Ok(nb) => nb,
+            Err(e) if e.kind() == WouldBlock || e.kind() == Interrupted => {
+                return Ok(());    
+            }
+            Err(e) => Err(e)?,
+        };
+
+        assert!(nb > 
+
+        u32::from_ne_bytes(rbuf[..]);
+        self.conn = Some(conn);
+
+        return Ok(());
     }
 }
 
@@ -124,7 +114,7 @@ fn handle_state_fs_comms(
 // returns a vector of PathBuf's which have been changed
 // inside of the conf.state_dir fields indicated directory
 // which is monitored recursively.
-fn state_fs_changes(
+pub fn state_fs_changes(
     fs_states: &mut HashMap<PathBuf, String>,
     read_dir: ReadDir, 
 ) -> DRes<Vec<PathBuf>> {
