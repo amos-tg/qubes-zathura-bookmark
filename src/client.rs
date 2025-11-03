@@ -2,22 +2,21 @@ use crate::{
     shared_consts::*, 
     shared_fn::*,
     conf::Conf,
-    ERR_FNAME,
-    ERR_LOG_DIR_NAME,
+    //ERR_FNAME,
+    //ERR_LOG_DIR_NAME,
 };
 use std::{
     collections::HashMap,
     time::Duration,
-    ffi::OsStr,
     fs::{self, ReadDir},
     io::{self, Read, ErrorKind::*},
     os::unix::net::{UnixStream, UnixListener},
     path::{Path, PathBuf}, 
-    thread::park_timeout,
+    //thread::park_timeout,
 };
 use qrexec_binds::{QrexecClient, QIO};
 use anyhow::anyhow;
-use dbuggery::err_append;
+//use dbuggery::err_append;
 
 
 pub fn client_main(conf: Conf) -> DRes<()> {
@@ -30,8 +29,12 @@ pub fn client_main(conf: Conf) -> DRes<()> {
 
     initialize_files(&mut qrx, &conf, &mut rbuf)?;
 
+    let mut book_tx = BookTx::new(CLIENT_ZATH_SOCK_PATH)?; 
+    let mut state_tx = StateFsTx::new();
+
     loop {
-             
+        BookTx::handler(&mut book_tx, &mut rbuf, &mut qrx, &conf)?;
+        StateFsTx::handler(&mut state_tx, &mut rbuf, &mut qrx, &conf)?;
     }
 }
 
@@ -48,8 +51,9 @@ impl BookTx {
         return Ok(Self { sock, conn }); 
     }
 
-    // blocks until zathura connects to the socket,
-    // returns immediately if conn is already Some(stream).
+    /// blocks until zathura connects to the socket,
+    /// returns immediately if conn is already Some(stream).
+    /// don't call this directly, handler will call this.
     fn connect(&mut self) -> io::Result<()> {
         if self.conn.is_some() {
             return Ok(());
@@ -65,14 +69,14 @@ impl BookTx {
     fn handler(
         &mut self,
         rbuf: &mut [u8; BLEN],
-        qrx: &mut QrexecClient
+        qrx: &mut QrexecClient,
+        conf: &Conf,
     ) -> DRes<()> {
         if self.conn.is_none() {
             self.connect()?;
         }
 
         let mut conn = self.conn.take().unwrap();
-
         let res = conn.read(rbuf);
         let nb = match res {
             Ok(0) => {
@@ -86,76 +90,94 @@ impl BookTx {
             Err(e) => Err(e)?,
         };
 
-        assert!(nb > 
+        let msg_len = u32::from_ne_bytes(rbuf[..4].try_into()?);
+        if rbuf[4..6] != *ZBOOK_READ_NOTIFY || msg_len != nb.try_into()? {
+            Err(anyhow!(MSG_FORMAT_ERR))?; 
+        }
 
-        u32::from_ne_bytes(rbuf[..]);
+        let bname = str::from_utf8(&rbuf[6..(msg_len as usize)])? .to_owned();
+
+        get_book(qrx, conf, &bname, rbuf)?;
+
         self.conn = Some(conn);
-
         return Ok(());
     }
 }
 
-fn handle_state_fs_comms(
-    fs_states: &mut HashMap<PathBuf, String>,
-    qrx: &mut QrexecClient,
-    rbuf: &mut [u8; BLEN],
-    conf: &Conf,
-) -> DRes<()> {
-    let fchanged = state_fs_changes(
-        fs_states, fs::read_dir(&conf.state_dir)?)?; 
-
-    for file in fchanged {
-        send_file(qrx, &file, rbuf, file.is_dir())?;
-    }
-
-    return Ok(());
+struct StateFsTx {
+    fs_states: HashMap<PathBuf, String>,
 }
 
-// returns a vector of PathBuf's which have been changed
-// inside of the conf.state_dir fields indicated directory
-// which is monitored recursively.
-pub fn state_fs_changes(
-    fs_states: &mut HashMap<PathBuf, String>,
-    read_dir: ReadDir, 
-) -> DRes<Vec<PathBuf>> {
-    let mut fupdates = vec!();
-    let mut current_files = vec!();
-    for entry in read_dir {
-        let file = entry?;
-        let fpath = file.path();
+impl StateFsTx {
+    fn new() -> Self {
+        let fs_states = HashMap::new();
+        return Self { fs_states };
+    }
 
-        if fpath.is_dir() {
-            let changes = state_fs_changes(fs_states, fs::read_dir(&fpath)?)?;
-            fupdates.extend_from_slice(&changes[..changes.len()]);
+    fn handler(
+        &mut self,
+        rbuf: &mut [u8; BLEN],
+        qrx: &mut QrexecClient,
+        conf: &Conf,
+    ) -> DRes<()> {
+        let fchanged = Self::state_fs_changes(
+            &mut self.fs_states, fs::read_dir(&conf.state_dir)?)?; 
+    
+        for file in fchanged {
+            send_file(qrx, &file, rbuf, file.is_dir())?;
         }
-
-        current_files.push(fpath.clone());
-
-        let file_string = fs::read_to_string(&fpath)?;
-        let mref_kval = fs_states.get_mut(&fpath);
-        if let Some(mref_kval) = mref_kval {
-            if *mref_kval != file_string {
-                fupdates.push(fpath); 
+    
+        return Ok(());
+    }
+    
+    // only public so I don't have to make another test module
+    // inside this one.
+    /// returns a vector of PathBuf's which have been changed
+    /// inside of the conf.state_dir fields indicated directory
+    /// which is monitored recursively. 
+    pub fn state_fs_changes(
+        fs_states: &mut HashMap<PathBuf, String>,
+        read_dir: ReadDir, 
+    ) -> DRes<Vec<PathBuf>> {
+        let mut fupdates = vec!();
+        let mut current_files = vec!();
+        for entry in read_dir {
+            let file = entry?;
+            let fpath = file.path();
+    
+            if fpath.is_dir() {
+                let changes = Self::state_fs_changes(fs_states, fs::read_dir(&fpath)?)?;
+                fupdates.extend_from_slice(&changes[..changes.len()]);
             }
-        } else {
-            let _ = fs_states.insert(fpath.clone(), file_string);
-            fupdates.push(fpath);
+
+            current_files.push(fpath.clone());
+    
+            let file_string = fs::read_to_string(&fpath)?;
+            let mref_kval = fs_states.get_mut(&fpath);
+            if let Some(mref_kval) = mref_kval {
+                if *mref_kval != file_string {
+                    fupdates.push(fpath); 
+                }
+            } else {
+                let _ = fs_states.insert(fpath.clone(), file_string);
+                fupdates.push(fpath);
+            }
         }
+    
+        // going to avoid filter here because it could be really expensive
+        let mut del_list = vec!();
+        for (key, _) in fs_states.iter() {
+            if !current_files.contains(key) {
+                del_list.push(key.clone());
+            } 
+        }
+    
+        for key in del_list {
+            let _ = fs_states.remove(&key);
+        }
+    
+        return Ok(fupdates);
     }
-
-    // going to avoid filter here because it could be really expensive
-    let mut del_list = vec!();
-    for (key, _) in fs_states.iter() {
-        if !current_files.contains(key) {
-            del_list.push(key.clone());
-        } 
-    }
-
-    for key in del_list {
-        let _ = fs_states.remove(&key);
-    }
-
-    return Ok(fupdates);
 }
 
 fn initialize_files(
