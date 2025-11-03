@@ -96,7 +96,6 @@ pub const VAR_SEND_NUM_SFILES: &[u8] = b"5:";//<num_sfiles>
 
 // zathura notification message
 pub const ZBOOK_READ_NOTIFY: &[u8] = b"6;";//<book_name>
-//
 // client acknowledgement
 // RECV_SEQ
 //
@@ -109,6 +108,7 @@ pub const KIB64: usize = 65536;
 pub const BLEN: usize = KIB64 - 8;
 pub const RECV_SEQ: &[u8] = &[1];
 pub const SECONDS_2: Duration = Duration::from_secs(1);
+pub const CLIENT_ZATH_SOCK_PATH: &str = "/tmp/qubes_zath.sock";
 
 pub const RECV_SEQ_ERR: &str = 
     "Error: read byte did not match the RECV_SEQ sequence";

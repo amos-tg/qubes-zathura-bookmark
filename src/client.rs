@@ -6,11 +6,7 @@ use crate::{
     ERR_LOG_DIR_NAME,
 };
 use std::{
-    thread::park_timeout,
-    path::Path,
-    ffi::OsStr,
-    io,
-    fs,
+    collections::HashMap, ffi::OsStr, fs::{self, ReadDir}, io::{self, Read}, os::unix::net::UnixStream, path::{Path, PathBuf}, thread::park_timeout
 };
 use inotify::{
     Inotify,
@@ -22,6 +18,13 @@ use inotify::{
 use qrexec_binds::{QrexecClient, QIO};
 use anyhow::anyhow;
 use dbuggery::err_append;
+
+//FEATURE LIST
+//
+// * HashSet powered file diffing for state file updates | |
+//                                                     
+// * Bookname forwarding from   
+//
 
 pub fn client_main(conf: Conf) -> DRes<()> {
     const RPC_SERVICE_NAME: &str = "qubes.ZathuraMgmt";
@@ -37,115 +40,132 @@ pub fn client_main(conf: Conf) -> DRes<()> {
 
     initialize_files(&mut qrx, &conf, &mut rbuf)?;
 
-    let mut inotify = Inotify::init()?;
-    let mut watches = inotify.watches(); 
-
-    let mut state_wfds = vec!();
-    recurse_dir_watch(
-        WatchMask::CREATE | WatchMask::MODIFY,
-        &mut watches, zstate_path, &mut state_wfds)?;
-
-    let mut book_wfds = vec!();
-    recurse_dir_watch(
-        WatchMask::ACCESS,
-        &mut watches, book_path, &mut book_wfds)?;
-
-    let mut event_buf = [0u8; 8192];
-    let mut events;
-
     loop {
-        park_timeout(SECONDS_2);
+             
+    }
 
-        get_booknames(&mut qrx, &conf, &mut rbuf)?;
+    //let mut inotify = Inotify::init()?;
+    //let mut watches = inotify.watches(); 
 
-        events = match inotify.read_events(&mut event_buf) {
-            Ok(events) => Some(events),
-            Err(err) if err.kind() == io::ErrorKind::Interrupted => None, 
-            Err(err) if err.kind() == io::ErrorKind::WouldBlock => None,
-            Err(err) => {
-                let err = Err(err);
-                err_append(&err, ERR_FNAME, ERR_LOG_DIR_NAME);
-                err?;
-                unreachable!();
-            }
-        };
+    //let mut state_wfds = vec!();
+    //recurse_dir_watch(
+    //    WatchMask::CREATE | WatchMask::MODIFY,
+    //    &mut watches, zstate_path, &mut state_wfds)?;
 
-        if events.is_none() { continue }
+    //let mut book_wfds = vec!();
+    //recurse_dir_watch(
+    //    WatchMask::ACCESS,
+    //    &mut watches, book_path, &mut book_wfds)?;
 
-        for event in events.unwrap() {
-            if state_wfds.contains(&event.wd) { 
-                err_append(
-                    &state_noti(&mut qrx, event, &mut rbuf), 
-                    ERR_FNAME, ERR_LOG_DIR_NAME);
-            } else if book_wfds.contains(&event.wd) { 
-                err_append(
-                    &book_noti(&mut qrx, event, &mut rbuf, &conf),
-                    ERR_FNAME, ERR_LOG_DIR_NAME);
-            }
-        }
+    //let mut event_buf = [0u8; 8192];
+    //let mut events;
+
+    //loop {
+    //    park_timeout(SECONDS_2);
+
+    //    get_booknames(&mut qrx, &conf, &mut rbuf)?;
+
+    //    events = match inotify.read_events(&mut event_buf) {
+    //        Ok(events) => Some(events),
+    //        Err(err) if err.kind() == io::ErrorKind::Interrupted => None, 
+    //        Err(err) if err.kind() == io::ErrorKind::WouldBlock => None,
+    //        Err(err) => {
+    //            let err = Err(err);
+    //            err_append(&err, ERR_FNAME, ERR_LOG_DIR_NAME);
+    //            err?;
+    //            unreachable!();
+    //        }
+    //    };
+
+    //    if events.is_none() { continue }
+
+    //    for event in events.unwrap() {
+    //        if state_wfds.contains(&event.wd) { 
+    //            err_append(
+    //                &state_noti(&mut qrx, event, &mut rbuf), 
+    //                ERR_FNAME, ERR_LOG_DIR_NAME);
+    //        } else if book_wfds.contains(&event.wd) { 
+    //            err_append(
+    //                &book_noti(&mut qrx, event, &mut rbuf, &conf),
+    //                ERR_FNAME, ERR_LOG_DIR_NAME);
+    //        }
+    //    }
+    //}
+}
+
+fn handle_book_comms<'a>(
+    zsock: &mut UnixStream,
+    rbuf: &'a mut [u8; BLEN]
+) -> Result<Option<&'a [u8]>, io::Error> {
+    let nb = zsock.read(rbuf)?;
+    if nb > 0 {
+        return Ok(Some(&rbuf[..nb]));
+    } else {
+        return Ok(None);
     }
 }
 
-fn state_noti(
+fn handle_state_fs_comms(
+    fs_states: &mut HashMap<PathBuf, String>,
     qrx: &mut QrexecClient,
-    event: Event<&OsStr>,
-    rbuf: &mut [u8; BLEN], 
-) -> DRes<()> {
-    let path = Path::new(
-        event.name
-            .ok_or(anyhow!(MISSING_FNAME_ERR))?
-            .to_str()
-            .ok_or(anyhow!(INVALID_ENC_ERR))?);
-
-    let is_dir = path.is_dir();
-    
-    send_file(qrx, path.into(), rbuf, is_dir)?;
-
-    return Ok(());
-}
-
-fn book_noti(
-    qrx: &mut QrexecClient,
-    event: Event<&OsStr>,
     rbuf: &mut [u8; BLEN],
     conf: &Conf,
 ) -> DRes<()> {
-    let path = Path::new(
-        event.name
-            .ok_or(anyhow!(MISSING_FNAME_ERR))?
-            .to_str()
-            .ok_or(anyhow!(INVALID_ENC_ERR))?);
+    let fchanged = state_fs_changes(
+        fs_states, fs::read_dir(&conf.state_dir)?)?; 
 
-    if path.is_dir() { return Ok(()) }
-
-    let bname = path.file_name()
-        .ok_or(anyhow!(INVALID_ENC_ERR))?
-        .to_str()
-        .ok_or(anyhow!(INVALID_ENC_ERR))?;
-
-    get_book(qrx, conf, bname, rbuf)?;
+    for file in fchanged {
+        send_file(qrx, &file, rbuf, file.is_dir())?;
+    }
 
     return Ok(());
 }
 
-fn recurse_dir_watch(
-    watch_mask: WatchMask,
-    watches: &mut Watches,
-    dir_path: &Path,
-    wfd_vec: &mut Vec<WatchDescriptor>,
-) -> DRes<()> {
-    wfd_vec.push(watches.add(dir_path, watch_mask)?);
+// returns a vector of PathBuf's which have been changed
+// inside of the conf.state_dir fields indicated directory
+// which is monitored recursively.
+fn state_fs_changes(
+    fs_states: &mut HashMap<PathBuf, String>,
+    read_dir: ReadDir, 
+) -> DRes<Vec<PathBuf>> {
+    let mut fupdates = vec!();
+    let mut current_files = vec!();
+    for entry in read_dir {
+        let file = entry?;
+        let fpath = file.path();
 
-    for file in fs::read_dir(dir_path)? {
-        let file = file?;
-        if file.file_type()?.is_dir() {
-            recurse_dir_watch(
-                watch_mask, watches,
-                &file.path(), wfd_vec)?
+        if fpath.is_dir() {
+            let changes = state_fs_changes(fs_states, fs::read_dir(&fpath)?)?;
+            fupdates.extend_from_slice(&changes[..changes.len()]);
+        }
+
+        current_files.push(fpath.clone());
+
+        let file_string = fs::read_to_string(&fpath)?;
+        let mref_kval = fs_states.get_mut(&fpath);
+        if let Some(mref_kval) = mref_kval {
+            if *mref_kval != file_string {
+                fupdates.push(fpath); 
+            }
+        } else {
+            let _ = fs_states.insert(fpath.clone(), file_string);
+            fupdates.push(fpath);
         }
     }
-    
-    return Ok(());
+
+    // going to avoid filter here because it could be really expensive
+    let mut del_list = vec!();
+    for (key, _) in fs_states.iter() {
+        if !current_files.contains(key) {
+            del_list.push(key.clone());
+        } 
+    }
+
+    for key in del_list {
+        let _ = fs_states.remove(&key);
+    }
+
+    return Ok(fupdates);
 }
 
 fn initialize_files(
@@ -179,8 +199,10 @@ fn get_booknames(
                             Some(x.to_string())
                         } else {
                             None
-                        }
-                    }))
+                        } 
+                    }
+                )
+            ) 
         }; 
     }
 
@@ -251,7 +273,6 @@ fn get_book(
         .skip(2)
         .next()
         .ok_or(anyhow!(MSG_FORMAT_ERR))?;
-
 
     let num_reads = num_reads_decode(
         num_reads_bytes.try_into()?);
