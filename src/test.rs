@@ -4,14 +4,14 @@ use std::{
         read_dir,
         write,
         create_dir_all,
-        remove_dir,
+        remove_dir_all,
     },
     collections::HashMap,
 };
 use crate::{
     shared_fn::set_slice,
     shared_consts::DRes,
-    client::state_fs_changes,
+    client::StateFsTx,
 };
 
 
@@ -19,7 +19,7 @@ const DIR_PATH: &str = "/tmp/qzb_testing_dir_89256";
 struct FileCleaner;
 impl Drop for FileCleaner {
     fn drop(&mut self) {
-        let _ = remove_dir(DIR_PATH);
+        let _ = remove_dir_all(DIR_PATH);
     }
 }
 
@@ -44,7 +44,7 @@ fn state_fs_changes_test() -> DRes<()> {
     }
 
     let init_list =
-        state_fs_changes(&mut fs_changes, read_dir(dir_path)?)?;
+        StateFsTx::state_fs_changes(&mut fs_changes, read_dir(dir_path)?)?;
 
     for file in init_list {
         assert!(
@@ -57,8 +57,7 @@ fn state_fs_changes_test() -> DRes<()> {
 
     let changes_list_expected = vec!(changed_path);
     let changes_list = 
-        state_fs_changes(&mut fs_changes, read_dir(dir_path)?)?;
-
+        StateFsTx::state_fs_changes(&mut fs_changes, read_dir(dir_path)?)?;
     for file in changes_list {
         assert!(
             changes_list_expected.contains(&file),

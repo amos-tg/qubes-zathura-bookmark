@@ -104,7 +104,7 @@ impl BookTx {
     }
 }
 
-struct StateFsTx {
+pub struct StateFsTx {
     fs_states: HashMap<PathBuf, String>,
 }
 
