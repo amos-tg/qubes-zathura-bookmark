@@ -1,7 +1,4 @@
-use std::{
-    error::Error,
-    time::Duration,
-};
+use std::error::Error;
 
 pub type DRes<T> = Result<T, Box<dyn Error>>;
 
@@ -107,7 +104,6 @@ pub const CONF_PATH: &str =
 pub const KIB64: usize = 65536;
 pub const BLEN: usize = KIB64 - 8;
 pub const RECV_SEQ: &[u8] = &[1];
-pub const SECONDS_2: Duration = Duration::from_secs(1);
 pub const CLIENT_ZATH_SOCK_PATH: &str = "/tmp/qubes_zath.sock";
 
 pub const RECV_SEQ_ERR: &str = 
@@ -131,5 +127,3 @@ pub const BOOK_UNAVAILABLE_ERR: &str =
     book directory";
 pub const INVALID_MODEL_ERR: &str = 
     "Error: the model (client/server, identifier) is invalid";
-pub const MISSING_FNAME_ERR: &str = 
-    "Error: the Event does not have a path name";
