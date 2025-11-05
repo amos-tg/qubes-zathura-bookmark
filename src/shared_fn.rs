@@ -10,6 +10,22 @@ use std::{
 };
 use qrexec_binds::QIO;
 
+struct Request {
+    qrx: QrexecClient,
+}
+
+impl Request {
+
+}
+
+struct Response {
+
+}
+
+impl Response {
+
+}
+
 #[macro_export]
 macro_rules! recv_seq {
     ($qrx:expr, $rbuf:expr) => {

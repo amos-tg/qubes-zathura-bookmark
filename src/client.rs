@@ -38,6 +38,14 @@ pub fn client_main(conf: Conf) -> DRes<()> {
     }
 }
 
+struct Request {
+    qrx: QrexecClient,
+}
+
+impl Request {
+
+}
+
 struct BookTx { 
     sock: UnixListener,
     conn: Option<UnixStream>, 
@@ -320,7 +328,7 @@ fn get_state_fs(
     let id = find_delim(&rbuf[..nb], b':')
         .ok_or(anyhow!(MSG_FORMAT_ERR))?;
 
-    let mut num_files = num_reads_decode(
+    let mut num_files = u32::from_ne_bytes(
         rbuf[(id + 1)..nb].try_into()?);
 
     while num_files != 0 {
