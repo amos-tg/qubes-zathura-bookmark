@@ -1,29 +1,72 @@
-use crate::{
-    shared_consts::*,
-    conf::Conf,
-};
-use anyhow::anyhow;
-use std::{
-    path::Path,
-    num::TryFromIntError,
-    fs,
-};
-use qrexec_binds::QIO;
+use crate::shared_consts::*;
+use std::num::TryFromIntError;
 
-struct Request {
-    qrx: QrexecClient,
+/// takes a vector of AsRef<[u8]>, compacts them into a vector
+/// in the following format based on data initial vectors indice
+/// boundaries. cursor is an offset to correct the ordered_indices
+/// based on the context of the buffer in which it is placed, it's 
+/// the starting index where the indexed_data will be placed:
+///
+/// 1 =  num_indexes: u32
+/// 2 =  index pairs: (u32, u32): length = 1 (per index, not per pair)
+/// 3 =  data: byte stream
+///
+/// the byte stream can be reassembled into multiple distinct byte
+/// sets as seperated by indices
+pub fn index_data(
+    data: Vec<impl AsRef<[u8]>>,
+    mut cursor: usize,
+) -> Result<Vec<u8>, TryFromIntError> { 
+    let mut compacted: Vec<u8> = vec!();
+    let mut ordered_indices: Vec<u8> = vec!();
+
+    for part in data {
+        let len = part.as_ref().len();
+
+        ordered_indices.extend_from_slice(
+            &u32::to_ne_bytes(cursor.try_into()?));
+
+        ordered_indices.extend_from_slice(
+            &u32::to_ne_bytes((len + cursor).try_into()?));
+
+        cursor += len;
+    }
+
+    compacted.extend_from_slice(
+        &u32::to_ne_bytes(ordered_indices.len().try_into()?));
+
+    compacted.extend_from_slice(&ordered_indices);
+
+    return Ok(compacted);
 }
 
-impl Request {
+pub fn deindex_data(data: Vec<u8>) -> DRes<Vec<Vec<u8>>> {
+    let mut deindexed: Vec<Vec<u8>> = vec!();
+    let mut cursor = 4;
+    let mut endex = 12;
+    let mut nindices = u32::from_ne_bytes(data[..cursor].try_into()?);
+    let mut indices = Vec::with_capacity(nindices.try_into()?);
+    while nindices != 0 {
+        indices.push(
+            u32::from_ne_bytes(data[cursor..endex].try_into()?));
+        cursor += 4;
+        endex += 4;
 
-}
+        indices.push(
+            u32::from_ne_bytes(data[cursor..endex].try_into()?));
+        cursor += 4;
+        endex += 4;
+        nindices -= 2;
+    } 
 
-struct Response {
+    for (idx, val) in indices.iter().enumerate() {
+        let mut bounded_data = vec!();
+        bounded_data.extend_from_slice(
+            &data[(*val as usize)..(indices[idx+1] as usize)]);
+        deindexed.push(bounded_data);
+    }
 
-}
-
-impl Response {
-
+    return Ok(deindexed);
 }
 
 #[macro_export]
@@ -70,116 +113,6 @@ pub fn num_reads_decode(bytes: [u8; 4]) -> u32 {
 
     #[cfg(target_endian = "little")]
     return u32::from_le_bytes(bytes);
-}
-
-/// if it is a dir pass true to is_dir
-pub fn send_file(
-    qrx: &mut impl QIO, 
-    fpath: &Path, 
-    rbuf: &mut [u8; BLEN],
-    is_dir: bool,
-) -> DRes<()> {
-    let fcont = fs::read(&fpath)?;
-
-    let fname_bytes = fpath.file_name()
-        .ok_or(anyhow!(MISSING_BASENAME_ERR))?
-        .as_encoded_bytes();
-
-    const NUM_DELIMS: usize = 2;
-    let (num_reads_arr, num_reads)  = num_reads_encode(
-        VAR_SEND_SFILE.len() 
-        + fname_bytes.len() 
-        + fcont.len()
-        + NUM_DELIMS)?;
-
-    let mut cursor = 0usize;
-    cursor += set_slice(&mut rbuf[cursor..], VAR_SEND_SFILE); 
-    cursor += set_slice(&mut rbuf[cursor..], fname_bytes);
-    cursor += set_slice(&mut rbuf[cursor..], &[b':']);
-    cursor += set_slice(&mut rbuf[cursor..], &num_reads_arr);
-    cursor += set_slice(&mut rbuf[cursor..], &[b':']);
-    cursor += set_slice(&mut rbuf[cursor..], &[is_dir as u8]); 
-    cursor += set_slice(&mut rbuf[cursor..], &[b';']);
-
-    if num_reads == 1 {
-        cursor += set_slice(&mut rbuf[cursor..], &fcont); 
-        qrx.write(&rbuf[..cursor])?;
-        recv_seq!(qrx, rbuf);
-
-        return Ok(());
-    }
-
-    let remaining = BLEN - cursor;
-    cursor = set_slice(&mut rbuf[cursor..], &fcont[..=remaining]); 
-
-    qrx.write(rbuf)?;
-    recv_seq!(qrx, rbuf);
-
-    let mut wslice;
-    let mut rem_len;
-    let mut max_fit_len;
-    for _ in 0..(num_reads - 1) {
-        wslice = {
-            rem_len = fcont[cursor..].len();
-            max_fit_len = fcont[cursor..(cursor + BLEN)].len();
-            if rem_len > max_fit_len {
-                &fcont[cursor..]
-            } else {
-                &fcont[cursor..(cursor + BLEN)]
-            } 
-        };
-
-        cursor += qrx.write(wslice)?; 
-        recv_seq!(qrx, rbuf);
-    }
-
-    return Ok(());
-}
-
-/// reads a VAR_SEND_FILE request;
-/// the first read must be loaded into rbuf
-/// this is the only way the server
-/// will know what request it is answering
-pub fn recv_file(
-    qrx: &mut impl QIO, 
-    conf: &Conf,
-    rbuf: &mut [u8; BLEN],
-    inital_read_num_bytes: usize,
-) -> DRes<()> {
-    const REQ_LEN: usize = VAR_SEND_SFILE.len();
-
-    let mut fcont = vec!();
-    let mut nb;
-
-    let fname_di = find_delim(&rbuf[REQ_LEN..], b':')
-        .ok_or(anyhow!(MSG_FORMAT_ERR))?;
-    let num_reads_di = find_delim(&rbuf[fname_di..], b':')
-        .ok_or(anyhow!(MSG_FORMAT_ERR))?;
-
-    let fname = str::from_utf8(&rbuf[REQ_LEN..fname_di])?
-        .to_owned();
-    let num_reads = num_reads_decode(
-        rbuf[(fname_di + 1)..num_reads_di].try_into()?);
-    let is_dir = rbuf[num_reads_di + 1]; 
-
-    fcont.extend_from_slice(
-        &rbuf[(num_reads_di + 1)..inital_read_num_bytes]);
-
-    for _ in 0..(num_reads - 1) {
-        nb = qrx.read(rbuf)?; 
-        fcont.extend_from_slice(&rbuf[..nb]);
-        qrx.write(RECV_SEQ)?;
-    } 
-
-    if is_dir == 0 {
-        fs::write(
-            format!("{}/{}", conf.state_dir, fname),
-            fcont)?;
-    } else {
-        fs::create_dir_all(fname)?;
-    }
-    
-    return Ok(());
 }
 
 /// returns the index of the first byte 
