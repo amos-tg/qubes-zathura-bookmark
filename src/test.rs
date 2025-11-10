@@ -9,10 +9,34 @@ use std::{
     collections::HashMap,
 };
 use crate::{
-    shared_fn::set_slice,
+    shared_fn::{
+        set_slice,
+        index_data,
+        deindex_data,
+    },
     shared_consts::DRes,
     client::StateFsTx,
 };
+
+#[test]
+fn indexed_data_test() -> DRes<()> {
+    let mut test_data = vec!();
+
+    let var1 = vec![1,2,3,4];
+    let var2 = vec![4,3,2,1];
+    let var3 = vec![5,6,7,8];
+
+    test_data.push(var1);
+    test_data.push(var2);
+    test_data.push(var3);
+
+    let data = index_data(test_data.clone(), 0)?;
+    let tested_data = deindex_data(data)?;
+
+    assert_eq!(test_data, tested_data);
+
+    return Ok(());
+}
 
 
 const DIR_PATH: &str = "/tmp/qzb_testing_dir_89256";
