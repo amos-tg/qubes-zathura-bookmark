@@ -1,6 +1,13 @@
 use crate::shared_consts::*;
 use std::num::TryFromIntError;
 
+
+pub enum Content {
+    One(Vec<u8>),
+    More(Vec<Vec<u8>>),
+    None,
+}
+
 /// takes a vector of AsRef<[u8]>, compacts them into a vector
 /// in the following format based on data initial vectors indice
 /// boundaries. cursor is an offset to correct the ordered_indices
@@ -87,14 +94,13 @@ pub fn find_delim(buf: &[u8], pat: u8) -> Option<usize> {
     return None;
 }
 
+
 /// bytes needs to be an accurate representation of the 
 /// number of bytes being written over the
 /// course of the entire message response chain that
 /// comprises the request, this function takes into account
 /// the length added by the num_reads array itself, 4 bytes.  
-pub fn num_reads_encode(
-    bytes: usize,
-) -> Result<([u8; 4], u32), TryFromIntError> {
+pub fn num_reads_encode(bytes: usize) -> Result<([u8; 4], u32), TryFromIntError> {
     let mut num_reads = ((bytes + 4) / BLEN).try_into()?;
     if num_reads == 0 {
         num_reads = 1;

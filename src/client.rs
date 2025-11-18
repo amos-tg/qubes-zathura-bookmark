@@ -2,21 +2,18 @@ use crate::{
     shared_consts::*, 
     shared_fn::*,
     conf::Conf,
-    //ERR_FNAME,
-    //ERR_LOG_DIR_NAME,
 };
 use std::{
+    num::TryFromIntError,
     collections::HashMap,
     time::Duration,
     fs::{self, ReadDir},
     io::{self, Read, ErrorKind::*},
     os::unix::net::{UnixStream, UnixListener},
     path::{Path, PathBuf}, 
-    //thread::park_timeout,
 };
 use qrexec_binds::{QrexecClient, QIO};
 use anyhow::anyhow;
-//use dbuggery::err_append;
 
 
 pub fn client_main(conf: Conf) -> DRes<()> {
@@ -38,19 +35,68 @@ pub fn client_main(conf: Conf) -> DRes<()> {
     }
 }
 
-struct Request {
+struct Requester {
     qrx: QrexecClient,
+    buf: [u8; BLEN],
+    cursor: usize,
 }
 
-impl Request {
+// It doesn't make sense for there to be a single sender 
+// method on requester for all the Request structs.
 
+impl Requester {
+    fn new(qrx: QrexecClient) -> Self {
+        Self { qrx, buf: [0u8; BLEN], cursor: 0 }
+    }
 }
+ 
+// on this side the request is one of:
+// - Content::One(x)
+// - Content::More(x)
+// - Content::None = Ident condition
+
+trait Request<const id: u8> {
+    fn send(qrx: &mut Requester, conf: &Conf) -> DRes<()> {
+        let cont = Self::contents(conf, qrx)?;
+        return match cont {
+            Content::One(cont) => Self::send_one(qrx, cont)?,
+            Content::More(cont) => Self::send_more(qrx, cont)?,
+            Content::None => (),
+        };
+    }
+
+    //fn send_one(qrx: &mut Requester, cont: Vec<u8>) -> DRes<()> {
+    //    Self::set_numreads(qrx, cont.len());
+    //    let mut max_cursor;
+    //    while num_reads != 0 {
+    //        if num_reads = 1 
+    //    } 
+
+    //    return Ok(());
+    //}
+
+    fn send_more(qrx: &mut Requester, conts: Vec<Vec<u8>>) -> DRes<()> {
+
+        return Ok(());
+    }
+
+    fn set_numreads(
+        qrx: &mut Requester,
+        msg_len: usize,
+    ) -> Result<u32, TryFromIntError> {
+        let (nrb, nr) = num_reads_encode(msg_len)?;
+        qrx.cursor += set_slice(&mut qrx.buf, &nrb);
+        return Ok(nr);
+    }
+
+    fn contents(conf: &Conf, qrx: &mut Requester) -> DRes<Content>; 
+}
+
 
 struct BookTx { 
     sock: UnixListener,
     conn: Option<UnixStream>, 
 }
-
 impl BookTx {
     // binds the zathura unix stream socket
     fn new(sock_path: impl AsRef<Path>) -> io::Result<Self> {

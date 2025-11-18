@@ -14,45 +14,50 @@ use anyhow::anyhow;
 
 pub fn server_main(conf: Conf) -> DRes<()> {
     let qrx = QrexecServer::new();
-    let mut responder = Responder::new(qrx);
+    let mut qx = Qmunnicate::new(qrx);
     loop {
-        responder.poll_send(&conf)?; 
+        qx.server_recv(&conf)?; 
     }
 }
 
-struct Responder {
-    qrx: QrexecServer,
+struct Qmunnicate<T: QIO> {
+    qrx: T,
     buf: [u8; BLEN],
     cursor: usize,
 }
 
-impl Responder {
+impl<T: QIO> Qmunnicate<T> {
     /// First available byte index in Responder.buf not 
     /// used by the header.
     const CONT_IDX: usize = 4;
     
-    fn new(qrx: QrexecServer) -> Self {
+    fn new(qrx: T) -> Self {
         Self { qrx, buf: [0u8; BLEN], cursor: 0 }
+    }
+
+    /// returns the number of reads, sets buf header
+    /// with the number of reads required for a response
+    /// of msg_len length. Sets the cursor to point to 
+    /// next available byte.
+    fn set_numreads(
+        &mut self,
+        msg_len: usize,
+    ) -> Result<u32, TryFromIntError> {
+        let (nrb, nr) = num_reads_encode(msg_len)?;
+        self.cursor += set_slice(&mut self.buf[self.cursor..], &nrb); 
+        return Ok(nr);
     }
 
     /// initially the cursor of the Responder object is 
     /// set to the number of bytes from the first read.
-    fn poll_send(&mut self, conf: &Conf) -> DRes<()> {
+    fn server(&mut self, conf: &Conf) -> DRes<()> {
         self.cursor = self.qrx.read(&mut self.buf)?;
         match self.buf[0] {
-            // I'm going to use the function in request
-            // on the client side for this so I don't write
-            // the same thing twice. I will have to write this 
-            // to parse the StateFiles::send functions response.
-            // Ideally it should handle multiple changed files
-            // anyways.
             //VAR_SEND_SFILE => recv_file(qrx, conf, rbuf, nb)?,
+            StateFiles::ID => StateFiles::send(self, &conf, None)?,
 
-            Book::ID => Book::send(self, &conf)?,
-
-            StateFiles::ID => StateFiles::send(self, &conf)?,
-
-            BookNames::ID => BookNames::send(self, &conf)?,
+            Book::ID => Book::send(self, &conf, None)?,
+            BookNames::ID => BookNames::send(self, &conf, None)?,
 
             _ => unreachable!(),
         }
@@ -61,32 +66,81 @@ impl Responder {
     }  
 }
 
-enum Content {
-    One(Vec<u8>),
-    More(Vec<Vec<u8>>),
-    None,
-}
+fn inner_recv<T: QIO>(qc: &mut Qmunnicate<T>) -> DRes<()> {
+    let mut content = vec!();
+    let mut rnb = qc.qrx.read(&mut qc.buf)?;
+    let mut num_reads = num_reads_decode(qc.buf[..4].try_into()?);
+    qc.cursor +=  num_reads;
+    while num_reads != 0 {
+        content.push(&qc.buf[qc.cursor..]);
 
-trait Response<const ID: u8> {
-    fn send(tx: &mut Responder, conf: &Conf) -> DRes<()> {
-        let cont = Self::contents(conf, tx)?;
-        return match cont {
-            Content::One(cont) => Self::send_one(tx, cont),
-            Content::More(cont) => Self::send_more(tx, cont),
-            Content::None => Ok(()),
-        };
+        num_reads -= 1;
     }
 
-    fn send_more(tx: &mut Responder, conts: Vec<Vec<u8>>) -> DRes<()> {
-        for cont in conts {      
-            Self::send_one(tx, cont)?;
+    return Ok(());
+}
+
+trait RecvOne<T: QIO> {
+    // StateFiles:
+    //  Decode and store server side,
+    //  Decode and store client side,
+    //  Requesting adaption (includes id) client side,
+    //
+    // BookNames:
+    //  Request, client side
+    //  storage, client side
+    //
+    // BookContent:
+    //  Request, client side
+    //  Storage, client side
+
+    ///  I am aware this is not optimized.
+    ///  I don't think that matters. 
+    ///
+    ///  The if statement is the simplest and 
+    ///  fastest way to get this working. 
+    ///
+    /// how to recv Content::More
+    /// how to recv Content::One
+    ///
+    /// use if statement
+    ///
+    /// Recieves the request on the client side 
+    fn recv(qc: &mut Qmunnicate<T>, conf: &Conf) -> DRes<()> {
+        return Ok(());
+    }
+}
+
+trait RecvMore<T: QIO> {
+    fn recv_more(qc: &mut Qmunnicate<T>, conf: &Conf) -> DRes<()> {
+        return Ok(());
+    }
+}
+
+trait RecvContentHandler {
+    fn handle(cont: Content, conf: &Conf) -> DRes<()>;
+}
+
+trait Send<T: QIO> {
+    fn send(qc: &mut Qmunnicate<T>, conf: &Conf, identifier: Option<u8>) -> DRes<()> {
+        let cont = Self::contents(conf, qc)?;
+        if let Some(identifier) = identifier {
+            qc.buf[0] = identifier;
+            qc.cursor += 1;
         }
 
+        match cont {
+            Content::One(cont) => Self::send_one(qc, cont)?,
+            Content::More(cont) => Self::send_more(qc, cont)?,
+            Content::None => _ = qc.qrx.write(&qc.buf)?,
+        }
+
+        qc.cursor = 0;
         return Ok(());
     }
 
-    fn send_one(tx: &mut Responder, cont: Vec<u8>) -> DRes<()> {
-        let mut num_reads = Self::set_numreads(tx, cont.len())?;
+    fn send_one(qc: &mut Qmunnicate<T>, cont: Vec<u8>) -> DRes<()> {
+        let mut num_reads = qc.set_numreads(cont.len())?;
         let mut max_cursor;
         while num_reads != 0 {
             if num_reads == 1 {
@@ -95,33 +149,31 @@ trait Response<const ID: u8> {
                 max_cursor = BLEN;
             }
 
-            tx.cursor += set_slice(
-                &mut tx.buf[tx.cursor..],
+            qc.cursor += set_slice(
+                &mut qc.buf[qc.cursor..],
                 &cont[..max_cursor]);
 
-            tx.qrx.write(&tx.buf[..tx.cursor])?;
-            tx.cursor = 0;
+            qc.qrx.write(&qc.buf[..qc.cursor])?;
+            qc.cursor = 0;
 
             num_reads -= 1;
         }
 
         return Ok(());
     }
-    
-    /// returns the number of reads, sets buf header
-    /// with the number of reads required for a response
-    /// of msg_len length. Sets the cursor to point to 
-    /// next available byte.
-    fn set_numreads(
-        tx: &mut Responder,
-        msg_len: usize,
-    ) -> Result<u32, TryFromIntError> {
-        let (nrb, nr) = num_reads_encode(msg_len)?;
-        tx.cursor += set_slice(&mut tx.buf, &nrb); 
-        return Ok(nr);
+
+    fn send_more(
+        qc: &mut Qmunnicate<T>,
+        conts: Vec<Vec<u8>>,
+    ) -> DRes<()> {
+        for cont in conts {      
+            Self::send_one(qc, cont)?;
+        }
+
+        return Ok(());
     }
 
-    fn contents(conf: &Conf, tx: &mut Responder) -> DRes<Content>;
+    fn contents(conf: &Conf, qc: &mut Qmunnicate<T>) -> DRes<Content>;
 }
 
 struct BookNames;
@@ -129,8 +181,8 @@ impl BookNames {
     const ID: u8 = b'0';
 }
 
-impl Response<{Self::ID}> for BookNames {
-    fn contents(conf: &Conf, _: &mut Responder) -> DRes<Content> {
+impl<T: QIO> Send<T> for BookNames {
+    fn contents(conf: &Conf, _: &mut Qmunnicate<T>) -> DRes<Content> {
         let mut bnames: Vec<u8> = vec!();
         let bdir_entries = fs::read_dir(&conf.book_dir)?;
         for bentry in bdir_entries {
@@ -150,11 +202,22 @@ impl Response<{Self::ID}> for BookNames {
     }
 }
 
+impl<T: QIO> Recv<T> for BookNames {
+    fn recv(qc: &mut Qmunnicate<T>, conf: &Conf) -> DRes<()> {
+
+        return Ok(());
+    }
+
+}
+
 struct Book;
-impl Book {
+impl Book {           
     const ID: u8 = b'2';
 
-    fn find_book(book_dir: &Path, bname: &str) -> io::Result<Option<PathBuf>> {
+    fn find_book(
+        book_dir: &Path,
+        bname: &str,
+    ) -> io::Result<Option<PathBuf>> {
         let path = book_dir.join(bname).to_owned();
         if fs::exists(&path)? {
             return Ok(Some(path));
@@ -170,7 +233,7 @@ impl Book {
     }
 }
 
-impl Response<{Book::ID}> for Book {
+impl Send<{Book::ID}> for Book {
     /// returns the book cont if it exists in book dir, else
     /// returns an empty vector if it doesn't exist.
     fn contents(conf: &Conf, tx: &mut Responder) -> DRes<Content> {
@@ -214,7 +277,7 @@ impl StateFiles {
     }
 }
 
-impl Response<{Self::ID}> for StateFiles {
+impl Send<{Self::ID}> for StateFiles {
     /// directories are denoted by zero contents, ie. the accompanying 
     /// vector of like ordered names will not have a content indice set
     /// Paths and Contents are sent in this order (the paths sent are 
