@@ -76,12 +76,14 @@ pub fn deindex_data(data: Vec<u8>) -> DRes<Vec<Vec<u8>>> {
     return Ok(deindexed);
 }
 
+/// takes a qrx: impl QIO and a buffer
+/// to read the recv_seq into.
 #[macro_export]
 macro_rules! recv_seq {
-    ($qrx:expr, $rbuf:expr) => {
+    ($qrx:expr, $buf:expr) => {
         assert!(
-            1 == $qrx.read($rbuf)?
-            && $rbuf[0] == RECV_SEQ[0],
+            1 == $qrx.read($buf)?
+            && $buf[0] == RECV_SEQ[0],
             "{}", RECV_SEQ_ERR);
     };
 }

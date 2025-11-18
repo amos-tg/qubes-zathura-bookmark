@@ -105,6 +105,7 @@ pub const KIB64: usize = 65536;
 pub const BLEN: usize = KIB64 - 8;
 pub const RECV_SEQ: &[u8] = &[1];
 pub const CLIENT_ZATH_SOCK_PATH: &str = "/tmp/qubes_zath.sock";
+pub const NUM_READS_LEN: usize = 4;
 
 pub const RECV_SEQ_ERR: &str = 
     "Error: read byte did not match the RECV_SEQ sequence";

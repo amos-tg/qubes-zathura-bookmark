@@ -1,4 +1,5 @@
 use crate::{
+    recv_seq,
     shared_consts::*,
     shared_fn::*,
     conf::Conf,
@@ -66,18 +67,25 @@ impl<T: QIO> Qmunnicate<T> {
     }  
 }
 
-fn inner_recv<T: QIO>(qc: &mut Qmunnicate<T>) -> DRes<()> {
+fn inner_recv<T: QIO>(qc: &mut Qmunnicate<T>) -> DRes<Vec<u8>> {
     let mut content = vec!();
-    let mut rnb = qc.qrx.read(&mut qc.buf)?;
-    let mut num_reads = num_reads_decode(qc.buf[..4].try_into()?);
-    qc.cursor +=  num_reads;
-    while num_reads != 0 {
-        content.push(&qc.buf[qc.cursor..]);
+    qc.cursor = 0;
 
+    qc.cursor = qc.qrx.read(&mut qc.buf)?;
+    let mut num_reads = num_reads_decode(
+        qc.buf[..NUM_READS_LEN].try_into()?);
+    num_reads -= 1;
+    content.push(&qc.buf[NUM_READS_LEN..qc.cursor]);
+    qc.qrx.write(RECV_SEQ)?;
+
+    while num_reads != 0 {
+        qc.cursor = qc.qrx.read(&mut qc.buf)?;  
+        qc.qrx.write(RECV_SEQ)?;
+        content.extend_from_slice(qc.buf[..qc.cursor]);
         num_reads -= 1;
     }
 
-    return Ok(());
+    return Ok(content);
 }
 
 trait RecvOne<T: QIO> {
@@ -107,18 +115,28 @@ trait RecvOne<T: QIO> {
     ///
     /// Recieves the request on the client side 
     fn recv(qc: &mut Qmunnicate<T>, conf: &Conf) -> DRes<()> {
+        let content = inner_recv(qc)?;
+        Self::handle(conf, content)?;
         return Ok(());
     }
+
+    fn handle(conf: &Conf, cont: Vec<u8>) -> DRes<()>; 
 }
 
 trait RecvMore<T: QIO> {
-    fn recv_more(qc: &mut Qmunnicate<T>, conf: &Conf) -> DRes<()> {
+    fn recv_more<const ITERS: usize>(
+        qc: &mut Qmunnicate<T>, conf: &Conf,
+    ) -> DRes<()> { 
+        let mut content = vec!();
+        for _ in 0..ITERS {
+            content.push(inner_recv(qc)?); 
+        }
+
+        Self::handle(conf, content)?;
         return Ok(());
     }
-}
 
-trait RecvContentHandler {
-    fn handle(cont: Content, conf: &Conf) -> DRes<()>;
+    fn handle(conf: &Conf, cont: Vec<Vec<u8>>) -> DRes<()>;
 }
 
 trait Send<T: QIO> {
@@ -154,6 +172,7 @@ trait Send<T: QIO> {
                 &cont[..max_cursor]);
 
             qc.qrx.write(&qc.buf[..qc.cursor])?;
+            recv_seq!(qc.qrx, qc.buf);
             qc.cursor = 0;
 
             num_reads -= 1;
