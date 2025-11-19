@@ -150,7 +150,8 @@ trait Send<T: QIO> {
         match cont {
             Content::One(cont) => Self::send_one(qc, cont)?,
             Content::More(cont) => Self::send_more(qc, cont)?,
-            Content::None => _ = qc.qrx.write(&qc.buf)?,
+            Content::None => { recv_seq!(qc.qrx, qc.buf); }
+            Content::None if identifier.is_some() => (),
         }
 
         qc.cursor = 0;
@@ -252,11 +253,17 @@ impl Book {
     }
 }
 
-impl Send<{Book::ID}> for Book {
+impl<T: QIO> RecvOne<T> for Book {
+    fn handle(conf: &Conf, cont: Vec<u8>) -> DRes<()> {
+        conf.book_dir.write
+    }
+}
+
+impl<T: QIO> Send<T> for Book {
     /// returns the book cont if it exists in book dir, else
     /// returns an empty vector if it doesn't exist.
-    fn contents(conf: &Conf, tx: &mut Responder) -> DRes<Content> {
-        let bname = str::from_utf8(&tx.buf[1..tx.cursor])?;
+    fn contents(conf: &Conf, qc: &mut Qmunnicate<T>) -> DRes<Content> {
+        let bname = str::from_utf8(&qc.buf[1..qc.cursor])?;
         let bpath = Self::find_book(Path::new(&conf.book_dir), bname)?;
         if let Some(bpath) = bpath { 
             return Ok(Content::One(fs::read(&bpath)?));
