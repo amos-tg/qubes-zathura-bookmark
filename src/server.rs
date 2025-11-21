@@ -1,3 +1,17 @@
+// PROGRESSION / CHECK LIST:  
+//
+// StateFiles: Decode and store server side,
+//  Decode and store client side,
+//  Requesting adaption (includes id) client side,
+//
+// BookNames:
+//  Request, client side
+//  storage, client side
+//
+// BookContent:
+//  Request, client side
+//  Storage, client side
+
 use crate::{
     recv_seq,
     shared_consts::*,
@@ -16,9 +30,7 @@ use anyhow::anyhow;
 pub fn server_main(conf: Conf) -> DRes<()> {
     let qrx = QrexecServer::new();
     let mut qx = Qmunnicate::new(qrx);
-    loop {
-        qx.server_recv(&conf)?; 
-    }
+    return Ok(());
 }
 
 struct Qmunnicate<T: QIO> {
@@ -53,6 +65,7 @@ impl<T: QIO> Qmunnicate<T> {
     /// set to the number of bytes from the first read.
     fn server(&mut self, conf: &Conf) -> DRes<()> {
         self.cursor = self.qrx.read(&mut self.buf)?;
+        self.qrx.write(RECV_SEQ)?;
         match self.buf[0] {
             //VAR_SEND_SFILE => recv_file(qrx, conf, rbuf, nb)?,
             StateFiles::ID => StateFiles::send(self, &conf, None)?,
@@ -68,20 +81,24 @@ impl<T: QIO> Qmunnicate<T> {
 }
 
 fn inner_recv<T: QIO>(qc: &mut Qmunnicate<T>) -> DRes<Vec<u8>> {
-    let mut content = vec!();
+    let mut content: Vec<u8> = vec!();
     qc.cursor = 0;
 
     qc.cursor = qc.qrx.read(&mut qc.buf)?;
+    qc.qrx.write(RECV_SEQ)?;
+
     let mut num_reads = num_reads_decode(
         qc.buf[..NUM_READS_LEN].try_into()?);
     num_reads -= 1;
-    content.push(&qc.buf[NUM_READS_LEN..qc.cursor]);
+
+    content.extend_from_slice(&qc.buf[NUM_READS_LEN..qc.cursor]);
     qc.qrx.write(RECV_SEQ)?;
 
     while num_reads != 0 {
         qc.cursor = qc.qrx.read(&mut qc.buf)?;  
         qc.qrx.write(RECV_SEQ)?;
-        content.extend_from_slice(qc.buf[..qc.cursor]);
+
+        content.extend_from_slice(&qc.buf[..qc.cursor]);
         num_reads -= 1;
     }
 
@@ -89,38 +106,13 @@ fn inner_recv<T: QIO>(qc: &mut Qmunnicate<T>) -> DRes<Vec<u8>> {
 }
 
 trait RecvOne<T: QIO> {
-    // StateFiles:
-    //  Decode and store server side,
-    //  Decode and store client side,
-    //  Requesting adaption (includes id) client side,
-    //
-    // BookNames:
-    //  Request, client side
-    //  storage, client side
-    //
-    // BookContent:
-    //  Request, client side
-    //  Storage, client side
-
-    ///  I am aware this is not optimized.
-    ///  I don't think that matters. 
-    ///
-    ///  The if statement is the simplest and 
-    ///  fastest way to get this working. 
-    ///
-    /// how to recv Content::More
-    /// how to recv Content::One
-    ///
-    /// use if statement
-    ///
-    /// Recieves the request on the client side 
     fn recv(qc: &mut Qmunnicate<T>, conf: &Conf) -> DRes<()> {
         let content = inner_recv(qc)?;
         Self::handle(conf, content)?;
         return Ok(());
     }
 
-    fn handle(conf: &Conf, cont: Vec<u8>) -> DRes<()>; 
+    fn handle(conf: &Conf, cont: Vec<u8>, bname: Option<&str>) -> DRes<()>; 
 }
 
 trait RecvMore<T: QIO> {
@@ -150,7 +142,12 @@ trait Send<T: QIO> {
         match cont {
             Content::One(cont) => Self::send_one(qc, cont)?,
             Content::More(cont) => Self::send_more(qc, cont)?,
-            Content::None => { recv_seq!(qc.qrx, qc.buf); }
+            // None on the server side is indicated by 0 as num_reads
+            Content::None => {
+                qc.qrx.write(&[0,0,0,0,1])?;
+                recv_seq!(qc.qrx, &mut qc.buf); 
+            }
+            // None on the client side can be completely ignored
             Content::None if identifier.is_some() => (),
         }
 
@@ -173,9 +170,9 @@ trait Send<T: QIO> {
                 &cont[..max_cursor]);
 
             qc.qrx.write(&qc.buf[..qc.cursor])?;
-            recv_seq!(qc.qrx, qc.buf);
-            qc.cursor = 0;
+            recv_seq!(qc.qrx, &mut qc.buf);
 
+            qc.cursor = 0;
             num_reads -= 1;
         }
 
@@ -202,6 +199,7 @@ impl BookNames {
 }
 
 impl<T: QIO> Send<T> for BookNames {
+    /// NO SEMICOLONS IN THE BOOKNAMES, who puts a semicolon in a title anyway
     fn contents(conf: &Conf, _: &mut Qmunnicate<T>) -> DRes<Content> {
         let mut bnames: Vec<u8> = vec!();
         let bdir_entries = fs::read_dir(&conf.book_dir)?;
@@ -222,12 +220,18 @@ impl<T: QIO> Send<T> for BookNames {
     }
 }
 
-impl<T: QIO> Recv<T> for BookNames {
-    fn recv(qc: &mut Qmunnicate<T>, conf: &Conf) -> DRes<()> {
+impl<T: QIO> RecvOne<T> for BookNames {
+    fn handle(conf: &Conf, cont: Vec<u8>) -> DRes<()> {
+        let mut path = PathBuf::from(&conf.book_dir);
+
+        for bname in str::from_utf8(&cont)?.split(';') {
+            path.push(bname);
+            fs::File::create(&path)?;      
+            let _ = path.pop();
+        }; 
 
         return Ok(());
     }
-
 }
 
 struct Book;
@@ -254,8 +258,11 @@ impl Book {
 }
 
 impl<T: QIO> RecvOne<T> for Book {
-    fn handle(conf: &Conf, cont: Vec<u8>) -> DRes<()> {
-        conf.book_dir.write
+    fn handle(conf: &Conf, cont: Vec<u8>, bname: Option<&str>) -> DRes<()> {
+        let bname = bname.ok_or(anyhow!(BOOKNAME_MISSING_ERR))?;
+        fs::write(
+            Path::from(format!("{}/{}", conf.book_dir, bname)),
+            cont)?;
     }
 }
 

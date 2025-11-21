@@ -1,5 +1,3 @@
-use std::error::Error;
-
 pub type DRes<T> = Result<T, Box<dyn Error>>;
 
 
@@ -126,5 +124,7 @@ pub const SYMLINK_ERR: &str =
 pub const BOOK_UNAVAILABLE_ERR: &str = 
     "Error: the book does not exist in the configured\
     book directory";
+pub const BOOKNAME_MISSING_ERR: &st = 
+    "Error: didn't pass a bookname into the Book::RecvOne::handle";
 pub const INVALID_MODEL_ERR: &str = 
     "Error: the model (client/server, identifier) is invalid";
