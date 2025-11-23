@@ -1,10 +1,14 @@
 use crate::shared_consts::*;
 use std::num::TryFromIntError;
 
-
 pub enum Content {
     One(Vec<u8>),
     More(Vec<Vec<u8>>),
+    None,
+}
+
+pub enum Extra {
+    FileName(String),
     None,
 }
 

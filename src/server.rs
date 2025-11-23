@@ -37,6 +37,13 @@ struct Qmunnicate<T: QIO> {
     qrx: T,
     buf: [u8; BLEN],
     cursor: usize,
+    
+    // data: Extra is used to store protocol specific 
+    // data which needs to persist between send
+    // and recv calls to properly carry out the
+    // Recv.*::handle function i.e. Book needs to
+    // remember the book name.
+    data: Extra,
 }
 
 impl<T: QIO> Qmunnicate<T> {
@@ -45,7 +52,7 @@ impl<T: QIO> Qmunnicate<T> {
     const CONT_IDX: usize = 4;
     
     fn new(qrx: T) -> Self {
-        Self { qrx, buf: [0u8; BLEN], cursor: 0 }
+        Self { qrx, buf: [0u8; BLEN], cursor: 0, data: None }
     }
 
     /// returns the number of reads, sets buf header
@@ -106,13 +113,13 @@ fn inner_recv<T: QIO>(qc: &mut Qmunnicate<T>) -> DRes<Vec<u8>> {
 }
 
 trait RecvOne<T: QIO> {
-    fn recv(qc: &mut Qmunnicate<T>, conf: &Conf) -> DRes<()> {
+    fn recv(qc: &mut Qmunnicate<T>, conf: &Conf, bname: Option<&str>) -> DRes<()> {
         let content = inner_recv(qc)?;
         Self::handle(conf, content)?;
         return Ok(());
     }
 
-    fn handle(conf: &Conf, cont: Vec<u8>, bname: Option<&str>) -> DRes<()>; 
+    fn handle(conf: &Conf, cont: Vec<u8>) -> DRes<()>; 
 }
 
 trait RecvMore<T: QIO> {
@@ -146,7 +153,7 @@ trait Send<T: QIO> {
             Content::None => {
                 qc.qrx.write(&[0,0,0,0,1])?;
                 recv_seq!(qc.qrx, &mut qc.buf); 
-            }
+            },
             // None on the client side can be completely ignored
             Content::None if identifier.is_some() => (),
         }
@@ -190,7 +197,10 @@ trait Send<T: QIO> {
         return Ok(());
     }
 
-    fn contents(conf: &Conf, qc: &mut Qmunnicate<T>) -> DRes<Content>;
+    fn contents(
+        conf: &Conf,
+        qc: &mut Qmunnicate<T>,
+    ) -> DRes<Content>;
 }
 
 struct BookNames;
@@ -258,22 +268,29 @@ impl Book {
 }
 
 impl<T: QIO> RecvOne<T> for Book {
-    fn handle(conf: &Conf, cont: Vec<u8>, bname: Option<&str>) -> DRes<()> {
-        let bname = bname.ok_or(anyhow!(BOOKNAME_MISSING_ERR))?;
+    fn handle(qc: &mut Qmunnicate<T>, conf: &Conf, cont: Vec<u8>) -> DRes<()> {
+        let bname = match qc.data {
+            Extra::FileName(bname) => bname,
+            Extra::None => return Ok(()),
+        };
+
         fs::write(
-            Path::from(format!("{}/{}", conf.book_dir, bname)),
-            cont)?;
+            Path::from(format!("{}/{}", conf.book_dir, bname)), cont)?;
     }
 }
 
 impl<T: QIO> Send<T> for Book {
     /// returns the book cont if it exists in book dir, else
     /// returns an empty vector if it doesn't exist.
-    fn contents(conf: &Conf, qc: &mut Qmunnicate<T>) -> DRes<Content> {
+    fn contents(
+        conf: &Conf,
+        qc: &mut Qmunnicate<T>,
+    ) -> DRes<Content> {
         let bname = str::from_utf8(&qc.buf[1..qc.cursor])?;
         let bpath = Self::find_book(Path::new(&conf.book_dir), bname)?;
         if let Some(bpath) = bpath { 
             return Ok(Content::One(fs::read(&bpath)?));
+            qc.data = bname.to_owned();
         } else {
             return Ok(Content::None);
         }
@@ -310,14 +327,14 @@ impl StateFiles {
     }
 }
 
-impl Send<{Self::ID}> for StateFiles {
+impl<T: QIO> Send<T> for StateFiles {
     /// directories are denoted by zero contents, ie. the accompanying 
     /// vector of like ordered names will not have a content indice set
     /// Paths and Contents are sent in this order (the paths sent are 
     /// stripped of the prefix conf.state_dir): 
     /// * 1: Paths, 
     /// * 2: Contents,
-    fn contents(conf: &Conf, _: &mut Responder) -> DRes<Content> {
+    fn contents(conf: &Conf, _: &mut Qmunnicate<T>) -> DRes<Content> {
         let mut file_paths: Vec<(PathBuf, FileType)> = vec!();
         let mut contents: Vec<u8> = vec!();
         let mut fpaths: Vec<u8> = vec!();
